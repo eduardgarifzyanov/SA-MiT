@@ -9,7 +9,7 @@ samit — экспериментальный пакет SA-MiT (Speckle-Aware Mi
   * samit.inference  — Predictor, TiledInference, Evaluator, экспорт;
   * samit.utils      — seed, логирование.
 
-См. README.md и блокнот notebooks/SA_MiT_demo.ipynb.
+См. README.md
 """
 
 __version__ = "0.1.0"
