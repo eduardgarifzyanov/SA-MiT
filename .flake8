@@ -1,0 +1,6 @@
+[flake8]
+# flake8 не читает pyproject.toml, поэтому настройки (согласованные
+# с [tool.black] в pyproject.toml) вынесены сюда отдельным файлом.
+max-line-length = 88
+extend-ignore = E203
+exclude = .git,__pycache__,build,dist,*.egg-info,results,logs,data_raw,data_tiles,checkpoints

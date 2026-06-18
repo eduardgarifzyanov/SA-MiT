@@ -1,0 +1,38 @@
+# Сырые и промежуточные данные, веса моделей, журналы и сгенерированные
+# артефакты — не версионируются, живут только на машине, где идёт обучение.
+data_raw/
+data_tiles/
+checkpoints/
+results/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Тестирование, покрытие, типизация
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Jupyter (если появятся черновики)
+.ipynb_checkpoints/

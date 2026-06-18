@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# Метаданные пакета (name, version, dependencies, classifiers и т.д.)
+# заданы в setup.py, а не здесь — requirements.txt остаётся единственным
+# источником истины для зависимостей, а setup.py читает версию напрямую
+# из samit/__init__.py. Этот файл отвечает за сборочный backend (PEP
+# 517/518) и за конфигурацию инструментов разработки из таблицы 4.4
+# диплома (раздел 4.2): pytest, black, mypy.
+#
+# ВАЖНО: flake8 не умеет читать настройки из pyproject.toml. Если он
+# нужен, заведите рядом setup.cfg или .flake8, например:
+#
+#   [flake8]
+#   max-line-length = 88
+#   extend-ignore = E203
+#   exclude = .git,__pycache__,results,logs,data_raw,data_tiles
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-ra -q"
+
+[tool.coverage.run]
+source = ["samit"]
+omit = ["tests/*", "scripts/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311", "py312"]
+extend-exclude = '''
+(
+  results/
+  | logs/
+  | data_raw/
+  | data_tiles/
+)
+'''
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+exclude = ["tests/", "scripts/", "results/", "data_raw/", "data_tiles/"]

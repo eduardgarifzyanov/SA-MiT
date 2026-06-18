@@ -1,0 +1,73 @@
+# Конфиг по умолчанию для пакета samit.
+# Соответствует таблице 4.10 диплома (раздел 4.6.6).
+# Все пути относительные; data_root указывает на каталог с тайлами.
+
+common:
+  seed: 42
+  data_root: /hdd_pool/egarifyzanov/samit_pkg/data_tiles     # каталог, куда сложил скрипт run_tile.py
+  image_size: 512
+  in_channels: 1
+  num_classes: 4
+  hog_dim: 27                     # 3 ячейки × 9 бинов (см. samit.data.hog)
+  hog_cell_size: 16
+  hog_num_bins: 9
+  ignore_index: 255
+  mean: 0.42
+  std: 0.21
+  num_workers: 16
+  use_amp: true
+  grad_clip: 1.0
+  keep_last: 3
+  # Названия семантических классов (используются в таблицах/графиках отчёта
+  # и при подписи confusion matrix). Длина = num_classes.
+  class_names:
+    - "Вода"
+    - "Дороги"
+    - "Строения"
+    - "Растительность"
+  # Палитра классов для визуального экспорта (export_segmentation, visualize).
+  # Длина = num_classes; каждый элемент — [R, G, B] в диапазоне [0, 255].
+  palette:
+    - [ 46, 117, 182]   # 0 — вода
+    - [255, 192,   0]   # 1 — дороги
+    - [192,   0,   0]   # 2 — строения
+    - [ 84, 130,  53]   # 3 — растительность
+
+stages:
+
+  # ----------------- ЭТАП 1 — SSL (HOG-MIM) -----------------
+  ssl:
+    train_index: /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/ssl.tsv
+    batch_size: 64
+    grad_accum: 2                 # эффективный батч 32
+    epochs: 3                   # 200–300 — см. таблицу 4.10
+    lr: 1.5e-4
+    min_lr: 1.0e-6
+    weight_decay: 0.05
+    betas: [0.9, 0.95]
+    warmup_steps: 1500
+    mask_ratio: 0.60
+    block_size: 16
+    checkpoint_dir: checkpoints/ssl
+    plot_dir: results/ssl_viz
+    log_file: logs/ssl.log
+
+  # ----------------- ЭТАП 2 — Сегментация -----------------
+  seg:
+    train_index: /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/seg_train.tsv
+    val_index:   /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/seg_val.tsv
+    test_index:  /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/seg_test.tsv
+    batch_size: 54
+    val_batch_size: 8
+    grad_accum: 4                 # эффективный батч 32
+    epochs: 150
+    lr: 6.0e-5                    # либо 1.0e-4 при «холодном старте»
+    min_lr: 1.0e-6
+    weight_decay: 0.05            # 0.01–0.05 — см. таблицу 4.10
+    betas: [0.9, 0.999]
+    warmup_steps: 1000
+    lambda_ce: 1.0                # вес CE-слагаемого (см. SegmentationLoss)
+    lambda_dice: 0.5              # вес Dice-слагаемого
+    checkpoint_dir: checkpoints/seg
+    plot_dir: results/seg_viz
+    log_file: logs/seg.log
