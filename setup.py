@@ -1,11 +1,5 @@
 """setup.py — упаковка пакета samit (SA-MiT) средствами setuptools.
 
-Метаданные собраны здесь, а не в pyproject.toml, чтобы не было двух
-источников истины: requirements.txt остаётся единственным местом, где
-перечислены рантайм-зависимости, а pyproject.toml отвечает только за
-сборочный backend (PEP 517/518) и настройки инструментов разработки
-(pytest, black, mypy).
-
 Установка пакета в режиме разработки:
     pip install -e .
     pip install -e ".[dev]"   # + pytest, flake8, black, mypy
@@ -61,7 +55,7 @@ setup(
     long_description=read_long_description(),
     long_description_content_type="text/markdown",
     author="Гарифзянов Эдуард Рустемович",
-    # author_email="you@example.com",        # укажите контактный e-mail при публикации
+    author_email="eduardgarifzyanov@gmail.com", 
     url="https://github.com/eduardgarifzyanov/SA-MiT",
     license="MIT",
     packages=find_packages(
