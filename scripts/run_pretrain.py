@@ -38,6 +38,7 @@ from samit.training.optim import build_optimizer, WarmupCosineScheduler
 from samit.training.checkpoint import Checkpointer
 from samit.training.trainer import TwoStageTrainer
 from samit.training.plots import plot_training_curves
+from samit.training.history import resume_history
 from samit.utils.seed import set_seed
 from samit.utils.logging import get_logger
 
@@ -219,7 +220,8 @@ def main():
             scheduler=scheduler, scaler=trainer.scaler, map_location=device,
         ) + 1
         trainer.global_step = scheduler.step_count
-    history = trainer.fit(num_epochs=ssl_cfg["epochs"], start_epoch=start)
+    previous = resume_history(Path(ssl_cfg.get("plot_dir", "results/ssl_viz")) / "history.json", start) if args.resume else None
+    history = trainer.fit(num_epochs=ssl_cfg["epochs"], start_epoch=start, history=previous)
 
     if not distributed or dist.get_rank() == 0:
         plot_dir = Path(ssl_cfg.get("plot_dir", "results/ssl_viz"))

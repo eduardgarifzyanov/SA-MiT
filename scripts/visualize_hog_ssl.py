@@ -27,6 +27,8 @@ from samit.data.transforms import SARTransform
 from samit.data.masking import BlockwiseMaskGenerator
 from samit.models.samit import SAMiT
 from samit.data.hog import compute_hog_target
+from samit.data.ssl import mask_ssl_image
+from samit.data.integrity import validate_prepared_indices
 
 
 def to_vis(x: torch.Tensor) -> np.ndarray:
@@ -81,6 +83,7 @@ def load_checkpoint(model, ckpt_path, device):
     ckpt = torch.load(
         ckpt_path,
         map_location=device,
+        weights_only=True,
     )
 
     print("Checkpoint keys:", ckpt.keys())
@@ -135,6 +138,10 @@ def main():
 
     common = cfg["common"]
     ssl_cfg = cfg["stages"]["ssl"]
+    if common.get("prepared_dataset", False):
+        validate_prepared_indices(common["data_root"], [ssl_cfg["train_index"]])
+    torch.manual_seed(common.get("seed", 42))
+    np.random.seed(common.get("seed", 42))
 
     device = (
         "cuda"
@@ -146,7 +153,7 @@ def main():
 
     transform = SARTransform(
         image_size=common["image_size"],
-        mode="train",
+        mode="eval",
         mean=common["mean"],
         std=common["std"],
     )
@@ -167,7 +174,7 @@ def main():
 
     print(f"Dataset size: {len(dataset)}")
 
-    if args.index >= len(dataset):
+    if not 0 <= args.index < len(dataset):
         raise IndexError(
             f"Index {args.index} out of range. "
             f"Dataset size = {len(dataset)}"
@@ -201,8 +208,9 @@ def main():
             num_bins=common.get("hog_num_bins", 9),
         )
 
+        masked_image = mask_ssl_image(image, mask)
         pred = model(
-            image,
+            masked_image,
             mode="ssl",
         )
 
@@ -223,7 +231,7 @@ def main():
 
     hog_masked = hog_target * (1.0 - mask)
 
-    sar_vis = sar_to_vis(image[0])
+    sar_vis = sar_to_vis(masked_image[0])
     tgt_vis = to_vis(hog_target[0])
     masked_vis = to_vis(hog_masked[0])
     pred_vis = to_vis(pred[0])
@@ -240,7 +248,7 @@ def main():
         sar_vis,
         cmap="gray",
     )
-    axes[0].set_title("Input SAR")
+    axes[0].set_title("Masked input SAR")
     axes[0].axis("off")
 
     axes[1].imshow(
@@ -273,7 +281,7 @@ def main():
 
     plt.tight_layout()
 
-    save_dir = "results/ssl_viz"
+    save_dir = ssl_cfg.get("plot_dir", "results/ssl_viz")
     os.makedirs(
         save_dir,
         exist_ok=True,

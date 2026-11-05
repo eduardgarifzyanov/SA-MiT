@@ -78,8 +78,7 @@ def compute_s_map_for_grid(
         Карта S̃_j ∈ [0, 1] на разрешении токенов стадии.
     """
     B, _, H_in, W_in = x.shape
-    p_h, p_w = H_in // H, W_in // W
-    assert p_h >= 1 and p_w >= 1, (
+    assert 1 <= H <= H_in and 1 <= W <= W_in, (
         f"Целевая сетка {H}x{W} крупнее входа {H_in}x{W_in}"
     )
 
@@ -87,12 +86,12 @@ def compute_s_map_for_grid(
     g = sobel_magnitude(x)                                # (B, 1, H_in, W_in)
 
     # Усреднение по эффективному патчу p_k × p_k.
-    s = F.avg_pool2d(g, kernel_size=(p_h, p_w), stride=(p_h, p_w))
-    # Может остаться лишний край, если H_in не делится нацело; обрезаем.
-    s = s[:, :, :H, :W]                                   # (B, 1, H, W)
+    # Identical to fixed average pooling for divisible shapes; all input
+    # pixels are represented for odd and rectangular grids as well.
+    s = F.adaptive_avg_pool2d(g, output_size=(H, W))
 
     # Min-max нормализация по каждому изображению в батче.
-    s_flat = s.view(B, -1)
+    s_flat = s.reshape(B, -1)
     s_min = s_flat.min(dim=1, keepdim=True).values
     s_max = s_flat.max(dim=1, keepdim=True).values
     s_norm = (s_flat - s_min) / (s_max - s_min + eps)

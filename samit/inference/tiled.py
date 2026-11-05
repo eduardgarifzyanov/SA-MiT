@@ -1,38 +1,15 @@
-"""Инференс полноразмерных изображений по перекрывающимся тайлам.
-
-Реализация раздела 4.7.2. Алгоритм:
-
-    1) reflect-padding входа, чтобы H, W ⩾ tile_size + n·stride;
-    2) скользящее окно (tile_size, stride);
-    3) для каждой позиции — Predictor.predict() даёт softmax-вероятности;
-    4) аккумулятор Π += probs · w_Hann, накопитель весов Σ += w_Hann;
-    5) финальная карта классов — argmax(Π / Σ).
-
-Окно Хеннинга 2D подавляет вес краёв тайла, где предсказания слабее
-из-за асимметричного receptive field.
-
-         Σ w(y,x)·p_class(y,x)
-    π = ─────────────────────────
-              Σ w(y,x)
-"""
+"""Sliding-window inference with bounded tile size and Hann blending."""
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 
 class TiledInference:
-    """Sliding window inference с весовой агрегацией по окну Хеннинга."""
+    """The NumPy and normalized-tensor paths share one inference algorithm."""
 
-    def __init__(
-        self,
-        predictor,
-        tile_size: int = 512,
-        stride: int = 384,
-        num_classes: int = 7,
-        use_hann: bool = True,
-    ) -> None:
-        assert stride <= tile_size, "stride не должен превышать tile_size"
+    def __init__(self, predictor, tile_size=512, stride=384, num_classes=7, use_hann=True):
+        if not 0 < stride <= tile_size or num_classes < 1:
+            raise ValueError("Require 0 < stride <= tile_size and positive num_classes")
         self.predictor = predictor
         self.tile_size = tile_size
         self.stride = stride
@@ -40,108 +17,59 @@ class TiledInference:
         self.use_hann = use_hann
         self._weight = self._build_window()
 
-    def _build_window(self) -> torch.Tensor:
+    def _build_window(self):
         if not self.use_hann:
             return torch.ones((self.tile_size, self.tile_size), dtype=torch.float32)
-        w1 = torch.hann_window(self.tile_size, periodic=False)
-        return torch.outer(w1, w1).clamp_min(1e-3)
+        window = torch.hann_window(self.tile_size, periodic=False)
+        return torch.outer(window, window).clamp_min(1e-3)
 
-    def _pad_image(self, image: np.ndarray):
-        H, W = image.shape
-        pad_h = (self.stride - (H - self.tile_size) % self.stride) % self.stride
-        pad_w = (self.stride - (W - self.tile_size) % self.stride) % self.stride
-        if pad_h or pad_w:
-            image = np.pad(image, ((0, pad_h), (0, pad_w)), mode="reflect")
-        return image, (H, W, pad_h, pad_w)
+    def _padded_length(self, length):
+        extra = max(0, length - self.tile_size)
+        return self.tile_size + ((extra + self.stride - 1) // self.stride) * self.stride
 
-    def _iter_tiles(self, H: int, W: int):
-        ys = list(range(0, H - self.tile_size + 1, self.stride))
-        xs = list(range(0, W - self.tile_size + 1, self.stride))
-        if ys[-1] != H - self.tile_size:
-            ys.append(H - self.tile_size)
-        if xs[-1] != W - self.tile_size:
-            xs.append(W - self.tile_size)
-        for y in ys:
-            for x in xs:
+    @staticmethod
+    def _reflection_indices(length, padded_length, device):
+        # Unlike F.pad(reflect), this supports arbitrary padding and length=1.
+        if length == 1:
+            return torch.zeros(padded_length, dtype=torch.long, device=device)
+        period = 2 * (length - 1)
+        indices = torch.arange(padded_length, device=device) % period
+        return torch.where(indices < length, indices, period - indices)
+
+    def _iter_tiles(self, height, width):
+        for y in range(0, height - self.tile_size + 1, self.stride):
+            for x in range(0, width - self.tile_size + 1, self.stride):
                 yield y, x
 
     @torch.no_grad()
-    def predict(self, image: np.ndarray) -> np.ndarray:
-        """Возвращает карту классов формы (H, W)."""
-        assert image.ndim == 2, "Ожидается одноканальное изображение"
-        if image.shape[0] < self.tile_size or image.shape[1] < self.tile_size:
-            # маленькое изображение — паддим до tile_size, потом обрезаем
-            H0, W0 = image.shape
-            pad_h = max(0, self.tile_size - H0)
-            pad_w = max(0, self.tile_size - W0)
-            image = np.pad(image, ((0, pad_h), (0, pad_w)), mode="reflect")
-            pred = self.predictor.predict(image)
-            return pred[:H0, :W0]
-
-        padded, (H0, W0, pad_h, pad_w) = self._pad_image(image)
-        H, W = padded.shape
-        device = self.predictor.device
-
-        accum = torch.zeros(
-            (self.num_classes, H, W),
-            dtype=torch.float32, device=device,
-        )
-        weight = torch.zeros((H, W), dtype=torch.float32, device=device)
-        window = self._weight.to(device)
-
-        for y, x in self._iter_tiles(H, W):
-            tile = padded[y:y + self.tile_size, x:x + self.tile_size]
-            _, probs = self.predictor.predict(tile, return_probs=True)
-            probs_t = torch.from_numpy(probs).to(device)
-            accum[:, y:y + self.tile_size, x:x + self.tile_size] += probs_t * window
-            weight[y:y + self.tile_size, x:x + self.tile_size] += window
-
-        accum = accum / weight.clamp_min(1e-6).unsqueeze(0)
-        pred = accum.argmax(dim=0).cpu().numpy().astype(np.int64)
-        return pred[:H0, :W0]
+    def predict(self, image):
+        """Accept a raw uint8 or float [0,1] 2D array; return an int64 map."""
+        if not isinstance(image, np.ndarray) or image.ndim != 2:
+            raise ValueError("Expected a 2D NumPy image")
+        normalized = self.predictor._to_tensor(image)[0, 0]
+        return self.predict_tensor(normalized)
 
     @torch.no_grad()
-    def predict_tensor(self, x: torch.Tensor) -> np.ndarray:
-        """То же, но вход — УЖЕ нормализованный 2D-тензор [H, W].
-
-        Не проходит через Predictor._to_tensor: никакого деления на 255 и повторной
-        нормализации. Используется внутри Evaluator/run_infer.py.
-        """
-        assert x.dim() == 2, f"ожидается 2D-тензор, получено dim={x.dim()}"
-        H0, W0 = x.shape
+    def predict_tensor(self, x):
+        """Accept an already normalized nonempty [H,W] tensor."""
+        if x.dim() != 2 or min(x.shape) < 1:
+            raise ValueError("Expected a nonempty 2D tensor")
+        original_h, original_w = x.shape
         device = self.predictor.device
         x = x.to(device, non_blocking=True)
-
-        if H0 < self.tile_size or W0 < self.tile_size:
-            pad_h = max(0, self.tile_size - H0)
-            pad_w = max(0, self.tile_size - W0)
-            x_padded = F.pad(x.unsqueeze(0).unsqueeze(0),
-                             (0, pad_w, 0, pad_h), mode="reflect").squeeze()
-            pred = self.predictor.predict_tensor(x_padded).squeeze(0).cpu().numpy()
-            return pred[:H0, :W0].astype(np.int64)
-
-        pad_h = (self.stride - (H0 - self.tile_size) % self.stride) % self.stride
-        pad_w = (self.stride - (W0 - self.tile_size) % self.stride) % self.stride
-        if pad_h or pad_w:
-            x_padded = F.pad(x.unsqueeze(0).unsqueeze(0),
-                             (0, pad_w, 0, pad_h), mode="reflect").squeeze()
-        else:
-            x_padded = x
-        H, W = x_padded.shape
-
-        accum = torch.zeros(
-            (self.num_classes, H, W), dtype=torch.float32, device=device,
-        )
-        weight = torch.zeros((H, W), dtype=torch.float32, device=device)
+        height, width = self._padded_length(original_h), self._padded_length(original_w)
+        ys = self._reflection_indices(original_h, height, device)
+        xs = self._reflection_indices(original_w, width, device)
+        padded = x.index_select(0, ys).index_select(1, xs)
+        accum = torch.zeros((self.num_classes, height, width), dtype=torch.float32, device=device)
+        weight = torch.zeros((height, width), dtype=torch.float32, device=device)
         window = self._weight.to(device)
-
-        for y, xc in self._iter_tiles(H, W):
-            tile = x_padded[y:y + self.tile_size, xc:xc + self.tile_size]
+        for y, column in self._iter_tiles(height, width):
+            tile = padded[y:y + self.tile_size, column:column + self.tile_size]
             _, probs = self.predictor.predict_tensor(tile, return_probs=True)
-            probs = probs.squeeze(0)
-            accum[:, y:y + self.tile_size, xc:xc + self.tile_size] += probs * window
-            weight[y:y + self.tile_size, xc:xc + self.tile_size] += window
-
-        accum = accum / weight.clamp_min(1e-6).unsqueeze(0)
-        pred = accum.argmax(dim=0).cpu().numpy().astype(np.int64)
-        return pred[:H0, :W0]
+            if probs.shape[1] != self.num_classes:
+                raise ValueError("Model output channels do not match num_classes")
+            accum[:, y:y + self.tile_size, column:column + self.tile_size] += probs[0] * window
+            weight[y:y + self.tile_size, column:column + self.tile_size] += window
+        prediction = (accum / weight.clamp_min(1e-6)[None]).argmax(dim=0)
+        return prediction[:original_h, :original_w].cpu().numpy().astype(np.int64)

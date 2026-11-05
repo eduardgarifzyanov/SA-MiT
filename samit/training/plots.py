@@ -53,7 +53,7 @@ def plot_training_curves(
     if len(train_loss) == 0:
         return out
 
-    epochs = range(1, len(train_loss) + 1)
+    epochs = [e + 1 for e in history.get("epochs", range(len(train_loss)))]
 
     plt.figure(figsize=(8, 5))
     plt.plot(epochs, train_loss, label="Train Loss", marker="o", markersize=3)
@@ -78,7 +78,7 @@ def plot_training_curves(
         m_epochs, m_values = [], []
         for i, value in enumerate(metric_values_raw):
             if value is not None:
-                m_epochs.append(i + 1)
+                m_epochs.append(epochs[i])
                 m_values.append(value)
 
         plt.figure(figsize=(8, 5))
@@ -120,7 +120,7 @@ def plot_dual_axis(
     train_loss = history.get("train_loss") or []
     if len(train_loss) == 0:
         return None
-    epochs = range(1, len(train_loss) + 1)
+    epochs = [e + 1 for e in history.get("epochs", range(len(train_loss)))]
 
     fig, ax_loss = plt.subplots(figsize=(8, 5))
     l1, = ax_loss.plot(epochs, train_loss, color="tab:blue", label="Train Loss")
@@ -136,7 +136,7 @@ def plot_dual_axis(
 
     metric_values_raw = history.get(metric_key) or []
     if any(v is not None for v in metric_values_raw):
-        m_epochs = [i + 1 for i, v in enumerate(metric_values_raw) if v is not None]
+        m_epochs = [epochs[i] for i, v in enumerate(metric_values_raw) if v is not None]
         m_values = [v for v in metric_values_raw if v is not None]
         ax_metric = ax_loss.twinx()
         l3, = ax_metric.plot(

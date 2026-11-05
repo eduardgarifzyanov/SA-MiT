@@ -39,6 +39,7 @@ from samit.utils.seed import set_seed
 from samit.utils.logging import get_logger
 
 from samit.training.plots import plot_training_curves
+from samit.training.history import resume_history
 
 
 def parse_args():
@@ -207,6 +208,7 @@ def main():
     history = trainer.fit(
         num_epochs=seg_cfg["epochs"],
         start_epoch=start,
+        history=resume_history(Path(seg_cfg["plot_dir"]) / "history.json", start) if args.resume else None,
     )
     
     if rank == 0:

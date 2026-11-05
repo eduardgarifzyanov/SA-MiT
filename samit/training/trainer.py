@@ -16,11 +16,11 @@
 import time
 
 import torch
-import torch.nn.functional as F
 from torch.amp import GradScaler, autocast
 import torch.distributed as dist
 
 from samit.data.hog import compute_hog_target
+from samit.data.ssl import mask_ssl_image
 
 
 class TwoStageTrainer:
@@ -95,11 +95,8 @@ class TwoStageTrainer:
                 cell_size=self.hog_cell_size,
                 num_bins=self.hog_num_bins,
             )
-        pixel_mask = F.interpolate(
-            mim_mask[:, None].float(), size=images.shape[-2:], mode="nearest"
-        ).bool()
         # Both the encoder and its speckle map see only the masked image.
-        masked_images = images.masked_fill(pixel_mask, 0.0)
+        masked_images = mask_ssl_image(images, mim_mask)
         hog_pred = self.model(masked_images, mode="ssl")
         loss = self.loss_fn(hog_pred, hog_target, mim_mask)
         return loss, hog_pred, mim_mask
@@ -117,6 +114,8 @@ class TwoStageTrainer:
         self.optimizer.zero_grad(set_to_none=True)
 
         num_batches = len(self.train_loader)
+        if num_batches == 0:
+            raise ValueError("Training loader has no batches; reduce batch_size or check the dataset")
         for i, batch in enumerate(self.train_loader):
             group_start = (i // self.grad_accum_steps) * self.grad_accum_steps
             group_size = min(self.grad_accum_steps, num_batches - group_start)
@@ -209,15 +208,17 @@ class TwoStageTrainer:
 
     # ----- ВНЕШНИЙ ВЫЗОВ -----
 
-    def fit(self, num_epochs: int, start_epoch: int = 0, logger=None) -> dict:
+    def fit(self, num_epochs: int, start_epoch: int = 0, logger=None, history=None) -> dict:
 
-        history = {
+        history = {key: list(values) for key, values in history.items()} if history else {
             "train_loss": [],
             "val_loss": [],
             "mean_iou": [],
         }
+        history.setdefault("epochs", list(range(len(history["train_loss"]))))
 
         for epoch in range(start_epoch, num_epochs):
+            history["epochs"].append(epoch)
 
             train_stats = self.train_one_epoch(
                 epoch,

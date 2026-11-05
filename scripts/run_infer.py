@@ -142,8 +142,11 @@ def main():
             continue
         item = test_ds[i]
         image_norm = item["image"].squeeze(0)  # [H, W], уже нормализован
-        pred_t = predictor.predict_tensor(image_norm)
-        pred = pred_t.squeeze(0).cpu().numpy().astype(np.int64)
+        if evaluator.tiled is not None:
+            pred = evaluator.tiled.predict_tensor(image_norm)
+        else:
+            pred_t = predictor.predict_tensor(image_norm)
+            pred = pred_t.squeeze(0).cpu().numpy().astype(np.int64)
         export_segmentation(
             pred,
             output_dir=args.output,
@@ -153,7 +156,7 @@ def main():
         # Для overlay восстанавливаем «сырое» изображение в [0, 1]
         # (overlay_prediction ждёт фон в исходной шкале).
         image_raw = (image_norm.cpu().numpy() * std_val + mean_val).clip(0.0, 1.0)
-        Image.fromarray(overlay_prediction(image_raw, pred)).save(
+        Image.fromarray(overlay_prediction(image_raw, pred, colors=palette)).save(
             os.path.join(args.output, f"sample_{i:04d}_overlay.png")
         )
     log.info("Инференс завершён.")

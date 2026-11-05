@@ -69,6 +69,8 @@ def test_cpu_training_resume_and_evaluation():
             pretrain.main()
             state = torch.load(root / "ssl/last.pt", weights_only=True)
             assert state["epoch"] == 1 and state["scheduler"]["step_count"] == 2
+            history = json.loads((root / 'ssl_plots/history.json').read_text())
+            assert history['epochs'] == [0, 1] and len(history['train_loss']) == 2
         finetune = _script("run_finetune")
         args = SimpleNamespace(config=str(cfg_path), resume=None,
                                pretrained=str(root / "ssl/best.pt"))
@@ -80,17 +82,23 @@ def test_cpu_training_resume_and_evaluation():
             finetune.main()
             state = torch.load(root / "seg/last.pt", weights_only=True)
             assert state["epoch"] == 1 and state["scheduler"]["step_count"] == 2
+            history = json.loads((root / 'seg_plots/history.json').read_text())
+            assert history['epochs'] == [0, 1] and len(history['train_loss']) == 2
         from samit.inference import eval_runner
         eval_cfg = SimpleNamespace(
             num_classes=4, image_size=64, checkpoint_dir=str(root / "seg"),
             checkpoint_path=str(root / "seg/best.pt"), mean=.42, std=.21,
             data_root=str(root), test_index=str(root / "seg.tsv"), use_tiled=False,
             output_dir=str(root / "eval"), sample_indices=[0], ignore_index=255,
+            palette=[[46, 117, 182], [255, 192, 0], [192, 0, 0], [84, 130, 53]],
         )
         with patch.object(eval_runner, "SAMiT", side_effect=_tiny):
             result = eval_runner.run_evaluation(eval_cfg)
         assert sum(map(sum, result["confusion_matrix"])) == 2 * (64 * 64 - 1)
         assert (root / "eval/sample_0000_indices.png").is_file()
+        pred = np.array(Image.open(root / 'eval/sample_0000_indices.png'))
+        color = np.array(Image.open(root / 'eval/sample_0000_color.png'))
+        assert np.array_equal(color, np.asarray(eval_cfg.palette, dtype=np.uint8)[pred])
 
 
 def test_run_full_uses_configured_checkpoint():

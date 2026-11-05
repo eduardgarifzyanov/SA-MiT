@@ -25,9 +25,15 @@ class Predictor:
     def _to_tensor(self, image) -> torch.Tensor:
         if isinstance(image, np.ndarray):
             if image.ndim == 2:
+                if not image.size:
+                    raise ValueError("Image must be nonempty")
                 arr = image.astype(np.float32)
-                if arr.max() > 1.5:
+                if image.dtype == np.uint8:
                     arr = arr / 255.0
+                elif not np.issubdtype(image.dtype, np.floating):
+                    raise ValueError("Expected uint8 or floating-point image in [0, 1]")
+                if not np.isfinite(arr).all() or arr.min() < 0 or arr.max() > 1:
+                    raise ValueError("Floating-point images must be finite and in [0, 1]")
                 arr = (arr - self.mean) / self.std
                 return torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
             raise ValueError("Ожидается одноканальное 2D-изображение")

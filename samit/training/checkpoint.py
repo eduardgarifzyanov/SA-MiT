@@ -2,6 +2,7 @@
 
 import glob
 import os
+import tempfile
 from typing import Optional
 
 import torch
@@ -49,8 +50,7 @@ class Checkpointer:
             metric_value > self.best_value if self.mode == "max"
             else metric_value < self.best_value
         )
-        if improved:
-            self.best_value = metric_value
+        next_best = metric_value if improved else self.best_value
         model = model.module if hasattr(model, "module") else model
         state = {
             "epoch": epoch,
@@ -58,13 +58,32 @@ class Checkpointer:
             "optimizer": optimizer.state_dict(),
             "scheduler": scheduler.state_dict(),
             "scaler": scaler.state_dict() if scaler is not None else None,
-            "best_value": self.best_value,
+            "best_value": next_best,
         }
         
         epoch_name = f"epoch_{epoch:04d}.pt"
         path = os.path.join(self.directory, epoch_name)
-        torch.save(state, path)
-        torch.save(state, os.path.join(self.directory, "last.pt"))
+        targets = [path]
+        if improved:
+            targets.append(os.path.join(self.directory, "best.pt"))
+        targets.append(os.path.join(self.directory, "last.pt"))
+        staged = []
+        try:
+            # Complete every serialization before replacing any usable file.
+            for target in targets:
+                fd, tmp = tempfile.mkstemp(prefix=".checkpoint-", suffix=".pt", dir=self.directory)
+                os.close(fd)
+                staged.append((tmp, target))
+                torch.save(state, tmp)
+                with open(tmp, "rb") as stream:
+                    os.fsync(stream.fileno())
+            for tmp, target in staged:
+                os.replace(tmp, target)
+            self.best_value = next_best
+        finally:
+            for tmp, _ in staged:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
         
         # Удаляем старые чекпойнты, оставляем последние keep_last
         ckpts = self._list_checkpoints()
@@ -74,8 +93,6 @@ class Checkpointer:
             except OSError:
                 pass
 
-        if improved:
-            torch.save(state, os.path.join(self.directory, "best.pt"))
 
     def load(
         self,

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import numpy as np
 from typing import Any, Dict
 
 import torch
@@ -85,13 +86,17 @@ def run_evaluation(cfg) -> Dict[str, Any]:
     for i in cfg.sample_indices:
         item = test_ds[i]
         image_t = item["image"].squeeze(0)
-        pred = predictor.predict_tensor(image_t).squeeze(0).cpu().numpy()
+        pred = (evaluator.tiled.predict_tensor(image_t) if evaluator.tiled is not None
+                else predictor.predict_tensor(image_t).squeeze(0).cpu().numpy())
         image = (image_t.cpu().numpy() * cfg.std + cfg.mean).clip(0, 1)
+        palette = getattr(cfg, "palette", None)
+        palette = np.asarray(palette, dtype=np.uint8) if palette is not None else None
         export_segmentation(
             pred, output_dir=cfg.output_dir,
             base_name=f"sample_{i:04d}",
+            class_colors=palette,
         )
-        Image.fromarray(overlay_prediction(image, pred)).save(
+        Image.fromarray(overlay_prediction(image, pred, colors=palette)).save(
             os.path.join(cfg.output_dir, f"sample_{i:04d}_overlay.png")
         )
 

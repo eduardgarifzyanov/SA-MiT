@@ -61,7 +61,7 @@ class SegmentationLoss(nn.Module):
     def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         if not torch.any(target != self.ignore_index):
             # Keep a connected zero loss, including on ranks with no valid labels.
-            return logits.sum() * 0.0
+            return logits.float().mean() * 0.0
         # перевести weight на устройство логитов
         if self.ce.weight is not None and self.ce.weight.device != logits.device:
             self.ce.weight = self.ce.weight.to(logits.device)

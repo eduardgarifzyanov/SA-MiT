@@ -56,26 +56,38 @@ class WarmupCosineScheduler:
         self.warmup_steps = warmup_steps
         self.min_lr = min_lr
         self.step_count = 0
+        if total_steps < 1 or warmup_steps < 0 or base_lr <= 0 or not 0 <= min_lr <= base_lr:
+            raise ValueError("Invalid learning-rate schedule")
+        self._set_lr(self._lr_for_update(1))
 
-    def step(self):
-        self.step_count += 1
-        if self.step_count < self.warmup_steps:
-            lr = self.base_lr * self.step_count / max(1, self.warmup_steps)
+    def _lr_for_update(self, update):
+        if self.warmup_steps and update <= self.warmup_steps:
+            lr = self.base_lr * update / self.warmup_steps
         else:
-            progress = ((self.step_count - self.warmup_steps)
-                        / max(1, self.total_steps - self.warmup_steps))
-            progress = min(1.0, progress)
+            progress = ((update - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
+                        if self.warmup_steps else (update - 1) / max(1, self.total_steps - 1))
+            progress = max(0.0, min(1.0, progress))
             lr = self.min_lr + 0.5 * (self.base_lr - self.min_lr) * \
                 (1.0 + math.cos(math.pi * progress))
+        return lr
+
+    def _set_lr(self, lr):
         for pg in self.optimizer.param_groups:
             pg["lr"] = lr
-        return lr
+
+    def step(self):
+        """Record a completed update and prepare LR for the next one."""
+        used_lr = self.optimizer.param_groups[0]["lr"]
+        self.step_count += 1
+        self._set_lr(self._lr_for_update(self.step_count + 1))
+        return used_lr
 
     def state_dict(self) -> dict:
         return {"step_count": self.step_count}
 
     def load_state_dict(self, state: dict) -> None:
         self.step_count = state["step_count"]
+        self._set_lr(self._lr_for_update(self.step_count + 1))
 
 
 def build_scheduler(

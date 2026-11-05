@@ -213,6 +213,31 @@ def positions(length, tile, stride):
     return result
 
 
+def _cached_tiles_valid(tiles, output, tile_size):
+    for item in tiles:
+        for kind in ("image", "mask"):
+            path = output / item[kind]
+            if not path.is_file():
+                return False
+            checksum = file_sha256(path)
+            recorded = item.get(kind + "_sha256")
+            if recorded is not None:
+                if recorded != checksum:
+                    return False
+                continue
+            try:
+                with Image.open(path) as image:
+                    image.load()
+                    if image.mode != "L" or image.size != (tile_size, tile_size):
+                        return False
+                    if kind == "mask" and not np.isin(np.asarray(image), [0, 1, 2, 3, 255]).all():
+                        return False
+            except (OSError, ValueError):
+                return False
+            item[kind + "_sha256"] = checksum
+    return True
+
+
 def _tile_source(task):
     source, output, tile, stride, skip_empty = task
     output = Path(output)
@@ -229,8 +254,9 @@ def _tile_source(task):
         cached = json.loads(done.read_text())
         if cached["identity"] != identity:
             raise ValueError(f"Resume parameters differ: {sid}")
-        if all((output / item["image"]).is_file() and (output / item["mask"]).is_file()
-               for item in cached["tiles"]):
+        if _cached_tiles_valid(cached["tiles"], output, tile):
+            # Upgrade older manifests after decoding their existing files.
+            write_json(done, cached)
             return cached
     image = load_grayscale(Path(source["image"]))
     mask = load_mask(Path(source["mask"]), source["mask_format"])
@@ -264,7 +290,9 @@ def _tile_source(task):
             intensity_sum += float(values.sum())
             intensity_sum_sq += float(np.square(values).sum())
             intensity_pixels += values.size
-            rows.append({"image": ip.as_posix(), "mask": mp.as_posix(), "y": y, "x": x})
+            rows.append({"image": ip.as_posix(), "mask": mp.as_posix(), "y": y, "x": x,
+                         "image_sha256": file_sha256(output / ip),
+                         "mask_sha256": file_sha256(output / mp)})
     result = {"identity": identity, "tiles": rows, "skipped": skipped,
               "class_pixels": class_pixels.tolist(),
               "intensity_sum": intensity_sum, "intensity_sum_sq": intensity_sum_sq,
