@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 
@@ -54,19 +55,20 @@ def main():
     ssl_cfg = cfg["stages"]["ssl"]
     common = cfg["common"]
 
-    distributed = "WORLD_SIZE" in os.environ
+    distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
 
     if distributed:
 
         dist.init_process_group(
-            backend="nccl"
+            backend="nccl" if torch.cuda.is_available() else "gloo"
         )
 
         local_rank = int(
             os.environ["LOCAL_RANK"]
         )
         
-        torch.cuda.set_device(local_rank)
+        if torch.cuda.is_available():
+            torch.cuda.set_device(local_rank)
 
     else:
         local_rank = 0
@@ -74,7 +76,7 @@ def main():
     base_seed = common.get("seed", 42)
 
     if distributed:
-        seed = base_seed + local_rank
+        seed = base_seed + dist.get_rank()
     else:
         seed = base_seed
 
@@ -90,7 +92,7 @@ def main():
     else:
         device = "cpu"
         
-    if not distributed or local_rank == 0:
+    if not distributed or dist.get_rank() == 0:
         log.info(f"device = {device}")
 
     # Данные
@@ -139,7 +141,7 @@ def main():
         * world_size
     )
 
-    if not distributed or local_rank == 0:
+    if not distributed or dist.get_rank() == 0:
         log.info(
             f"train: {len(train_ds)} samples, "
             f"effective batch = {effective_batch}"
@@ -157,8 +159,7 @@ def main():
     if distributed:
         model = DDP(
             model,
-            device_ids=[local_rank],
-            output_device=local_rank,
+            device_ids=[local_rank] if device != "cpu" else None,
             find_unused_parameters=True,
         )
 
@@ -169,7 +170,7 @@ def main():
         weight_decay=ssl_cfg["weight_decay"],
         betas=tuple(ssl_cfg.get("betas", (0.9, 0.95))),
     )
-    steps_per_epoch = max(1, len(train_loader) // ssl_cfg["grad_accum"])
+    steps_per_epoch = max(1, math.ceil(len(train_loader) / ssl_cfg["grad_accum"]))
     total_steps = steps_per_epoch * ssl_cfg["epochs"]
     scheduler = WarmupCosineScheduler(
         optimizer,
@@ -183,12 +184,9 @@ def main():
     ckpt = Checkpointer(
         directory=ssl_cfg["checkpoint_dir"],
         keep_last=common.get("keep_last", 3),
+        mode="min",
+        best_metric_name="train_loss",
     )
-    if args.resume:
-        start = ckpt.load(path=args.resume, model=model, optimizer=optimizer,
-                          scheduler=scheduler, map_location=device)
-    else:
-        start = 0
 
     # Функция потерь и тренер
     loss_fn = HOGReconstructionLoss()
@@ -211,9 +209,16 @@ def main():
         distributed=distributed,
         local_rank=local_rank,
     )
+    start = 0
+    if args.resume:
+        start = ckpt.load(
+            path=args.resume, model=model, optimizer=optimizer,
+            scheduler=scheduler, scaler=trainer.scaler, map_location=device,
+        ) + 1
+        trainer.global_step = scheduler.step_count
     history = trainer.fit(num_epochs=ssl_cfg["epochs"], start_epoch=start)
 
-    if not distributed or local_rank == 0:
+    if not distributed or dist.get_rank() == 0:
         plot_dir = Path(ssl_cfg.get("plot_dir", "results/ssl_viz"))
         plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -230,11 +235,12 @@ def main():
         )
         log.info(f"loss-кривая SSL сохранена в {result['loss_plot']}")
 
+    is_main = not distributed or dist.get_rank() == 0
     if distributed:
         dist.barrier()
         dist.destroy_process_group()
         
-    if not distributed or local_rank == 0:
+    if is_main:
         log.info("Этап 1 (HOG-MIM) завершён.")
 
 

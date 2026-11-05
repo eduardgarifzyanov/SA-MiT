@@ -16,9 +16,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-
-
-SSL_BEST = Path("runs/ssl/best.pt")
+import yaml
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,17 +36,18 @@ def run(cmd: list[str]) -> None:
 def main() -> None:
     args = parse_args()
     python = sys.executable
+    with open(args.config, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    ssl_best = Path(cfg["stages"]["ssl"]["checkpoint_dir"]) / "best.pt"
 
     # Этап 1: предобучение
     run([python, "scripts/run_pretrain.py", "--config", args.config])
 
     # Этап 2: тонкая настройка с инициализацией от лучшего SSL-чекпойнта
     pretrain_args = ["--config", args.config]
-    if SSL_BEST.exists():
-        pretrain_args += ["--pretrained", str(SSL_BEST)]
-    else:
-        print(f"[run_full] предупреждение: {SSL_BEST} не найден, "
-              f"finetune стартует со случайной инициализации", flush=True)
+    if not ssl_best.is_file():
+        raise FileNotFoundError(f"SSL checkpoint not found: {ssl_best}")
+    pretrain_args += ["--pretrained", str(ssl_best)]
     run([python, "scripts/run_finetune.py", *pretrain_args])
 
 

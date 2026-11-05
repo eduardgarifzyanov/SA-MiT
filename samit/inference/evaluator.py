@@ -143,6 +143,7 @@ class Evaluator:
         «сложных» (рис. 4.10) фрагментов в разделе 4.8.8.
         """
         t0 = time.time()
+        self.confusion.fill(0)
         per_sample = [] if return_per_sample else None
         for i in range(len(self.dataset)):
             item = self.dataset[i]

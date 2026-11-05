@@ -74,7 +74,7 @@ def test_one_step_ssl_step_runs():
     assert torch.isfinite(loss).item(), f"loss is not finite: {loss}"
 
 
-def smoke_test_training():
+def test_training_checkpoint_roundtrip():
     """Листинг 4.22 — Проверка процедур обучения (раздел 4.6.9).
 
     Шаги:
@@ -171,5 +171,5 @@ if __name__ == "__main__":
     test_forward_ssl_shape()
     test_one_step_seg_step_runs()
     test_one_step_ssl_step_runs()
-    smoke_test_training()
+    test_training_checkpoint_roundtrip()
     print("test_training: OK")

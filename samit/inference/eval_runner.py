@@ -60,7 +60,10 @@ def run_evaluation(cfg) -> Dict[str, Any]:
     # Тестовая выборка с детерминированными преобразованиями.
     test_ds = SARDataset(
         root=cfg.data_root, index_file=cfg.test_index,
-        transform=SARTransform(image_size=512, mode="eval"),
+        transform=SARTransform(
+            image_size=getattr(cfg, "image_size", 512), mode="eval",
+            mean=cfg.mean, std=cfg.std,
+        ),
         mode="seg",
     )
 
@@ -68,6 +71,7 @@ def run_evaluation(cfg) -> Dict[str, Any]:
     evaluator = Evaluator(
         predictor=predictor, dataset=test_ds,
         num_classes=cfg.num_classes,
+        ignore_index=getattr(cfg, "ignore_index", 255),
         use_tiled=cfg.use_tiled,
         tiled_kwargs={"tile_size": 512, "stride": 384},
     )
@@ -80,8 +84,9 @@ def run_evaluation(cfg) -> Dict[str, Any]:
     # Экспорт нескольких контрольных предсказаний в трёх формах.
     for i in cfg.sample_indices:
         item = test_ds[i]
-        image = item["image"].squeeze(0).cpu().numpy()
-        pred = predictor.predict(image)
+        image_t = item["image"].squeeze(0)
+        pred = predictor.predict_tensor(image_t).squeeze(0).cpu().numpy()
+        image = (image_t.cpu().numpy() * cfg.std + cfg.mean).clip(0, 1)
         export_segmentation(
             pred, output_dir=cfg.output_dir,
             base_name=f"sample_{i:04d}",

@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -60,6 +62,22 @@ except ImportError as _e:                                 # pragma: no cover
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
 
 
+@contextmanager
+def atomic_index(path):
+    """Keep the previous index intact if processing fails."""
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, delete=False
+        ) as stream:
+            tmp_path = Path(stream.name)
+            yield stream
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink()
+
+
 def load_grayscale(path: Path) -> np.ndarray:
     """Загрузка изображения в одноканальный uint8 numpy-массив.
 
@@ -78,9 +96,10 @@ def load_grayscale(path: Path) -> np.ndarray:
 
     if arr.ndim == 3:
         arr = arr.mean(axis=-1)
+    is_uint8 = arr.dtype == np.uint8
     arr = arr.astype(np.float32)
 
-    if arr.max() > 255.0 or arr.dtype != np.uint8:
+    if not is_uint8:
         lo, hi = np.percentile(arr, (1, 99))
         if hi - lo < 1e-6:
             hi = lo + 1.0
@@ -88,9 +107,15 @@ def load_grayscale(path: Path) -> np.ndarray:
     return arr.astype(np.uint8)
 
 
-def load_mask(path: Path) -> np.ndarray:
+def load_mask(path: Path, mask_format: str = "auto") -> np.ndarray:
     """Загрузка маски как uint8 (значения = индексы классов 0..K-1)."""
     arr = np.asarray(Image.open(path))
+    if mask_format not in ("auto", "common", "ds1", "rgb"):
+        raise ValueError(f"Unknown mask format: {mask_format}")
+    if mask_format == "common":
+        if arr.ndim != 2 or not np.isin(arr, [0, 1, 2, 3, 255]).all():
+            raise ValueError("Common masks must contain only 0..3 and 255")
+        return arr.astype(np.uint8)
 
     # --------------------------------------------------
     # FUSAR-Map RGB mask
@@ -108,7 +133,9 @@ def load_mask(path: Path) -> np.ndarray:
     # --------------------------------------------------
     arr = arr.astype(np.uint8)
 
-    if arr.max() <= 8:
+    if mask_format == "rgb":
+        raise ValueError("RGB mask must have three color channels")
+    if mask_format == "ds1" or arr.max() <= 8:
         out = np.full(arr.shape, 255, dtype=np.uint8)
 
         for src, dst in DS1_TO_COMMON.items():
@@ -180,6 +207,7 @@ def process_directory(
     stride: int,
     skip_empty: float,
     index_basename: str,
+    mask_format: str = "auto",
 ) -> int:
     """Обходит каталог, нарезает каждое изображение, пишет TSV-индекс."""
     images_out = dst_dir / "images"
@@ -190,8 +218,12 @@ def process_directory(
 
     index_path = dst_dir / f"{index_basename}.tsv"
     total = 0
-    with open(index_path, "w", encoding="utf-8") as idx:
+    seen_sources = set()
+    with atomic_index(index_path) as idx:
         for src_path in find_image_files(src_dir):
+            if src_path.stem in seen_sources:
+                raise ValueError(f"Duplicate source stem: {src_path.stem}")
+            seen_sources.add(src_path.stem)
             try:
                 image = load_grayscale(src_path)
             except Exception as e:
@@ -204,7 +236,7 @@ def process_directory(
                 if mask_path is None:
                     print(f"  [skip] нет маски для {src_path.name}")
                     continue
-                mask = load_mask(mask_path)
+                mask = load_mask(mask_path, mask_format=mask_format)
                 if mask.shape != image.shape:
                     print(f"  [skip] размеры image/mask различны: {src_path.name}")
                     continue
@@ -213,9 +245,8 @@ def process_directory(
             for tile_img, tile_mask, y, x in tiles:
                 base = f"{src_path.stem}_y{y:05d}_x{x:05d}"
                 img_rel = f"images/{base}.png"
-                if (dst_dir / img_rel).exists():
-                    continue
-                Image.fromarray(tile_img).save(dst_dir / img_rel)
+                if not (dst_dir / img_rel).exists():
+                    Image.fromarray(tile_img).save(dst_dir / img_rel)
                 if tile_mask is not None:
                     msk_rel = f"masks/{base}.png"
                     Image.fromarray(tile_mask).save(dst_dir / msk_rel)
@@ -242,6 +273,8 @@ def main():
     ap.add_argument("--stride", type=int, default=384)
     ap.add_argument("--skip-empty", type=float, default=0.98,
                     help="Доля чёрных пикселей, при которой тайл отбрасывается")
+    ap.add_argument("--mask-format", choices=["auto", "common", "ds1", "rgb"],
+                    default="auto", help="Схема меток; common сохраняет 0..3/255")
     args = ap.parse_args()
 
     dst = Path(args.dst)
@@ -270,6 +303,7 @@ def main():
             stride=args.stride,
             skip_empty=args.skip_empty,
             index_basename="seg_all",
+            mask_format=args.mask_format,
         )
 
 

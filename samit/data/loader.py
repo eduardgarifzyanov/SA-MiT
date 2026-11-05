@@ -6,7 +6,23 @@ from torch.utils.data import (
     DataLoader,
     RandomSampler,
     SequentialSampler,
+    Sampler,
 )
+
+
+class DistributedEvalSampler(Sampler):
+    """Shard evaluation without padding or duplicating samples."""
+
+    def __init__(self, dataset, rank, world_size):
+        self.size = len(dataset)
+        self.rank = rank
+        self.world_size = world_size
+
+    def __iter__(self):
+        return iter(range(self.rank, self.size, self.world_size))
+
+    def __len__(self):
+        return len(range(self.rank, self.size, self.world_size))
 
 
 def _collate_fn(batch):
@@ -76,6 +92,6 @@ def build_dataloader(
         pin_memory=pin_memory,
         drop_last=is_train,
         collate_fn=_collate_fn,
-        persistent_workers=True,
-        prefetch_factor=4,
+        **({"persistent_workers": True, "prefetch_factor": 4}
+           if num_workers > 0 else {}),
     )

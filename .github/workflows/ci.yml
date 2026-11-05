@@ -52,3 +52,12 @@ jobs:
 
       - name: Tests — pytest (+ coverage)
         run: pytest --cov --cov-report=term-missing
+
+      - name: Inference smoke tests
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: "2"
+        run: |
+          python tests/test_inference.py
+          python tests/test_tiled_tensor.py
+          python tests/test_infer_bug.py

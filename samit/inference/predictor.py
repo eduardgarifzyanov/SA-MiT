@@ -40,8 +40,8 @@ class Predictor:
         Принимает uint8 (0..255) или float [0..1]; нормализует mean/std сам.
         """
         x = self._to_tensor(image).to(self.device, non_blocking=True)
-        with torch.cuda.amp.autocast(
-            enabled=self.use_amp and self.device == "cuda",
+        with torch.amp.autocast(
+            device_type="cuda", enabled=self.use_amp and "cuda" in str(self.device),
         ):
             logits = self.model(x, mode="seg")
         probs = F.softmax(logits.float(), dim=1)
@@ -68,8 +68,8 @@ class Predictor:
         elif x.dim() != 4:
             raise ValueError(f"ожидается 2D/3D/4D тензор, получено dim={x.dim()}")
         x = x.to(self.device, non_blocking=True)
-        with torch.cuda.amp.autocast(
-            enabled=self.use_amp and self.device == "cuda",
+        with torch.amp.autocast(
+            device_type="cuda", enabled=self.use_amp and "cuda" in str(self.device),
         ):
             logits = self.model(x, mode="seg")
         probs = F.softmax(logits.float(), dim=1)

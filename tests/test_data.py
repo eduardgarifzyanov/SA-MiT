@@ -70,7 +70,7 @@ def _make_synthetic_root(root: str, n: int = 32, size: int = 512) -> None:
         f.write("\n".join(ssl_lines))
 
 
-def smoke_test_data_pipeline():
+def test_data_pipeline():
     """Листинг 4.15 — проверка форм пакетных тензоров для обоих режимов."""
     with tempfile.TemporaryDirectory() as root:
         _make_synthetic_root(root, n=32, size=512)
@@ -113,5 +113,5 @@ if __name__ == "__main__":
     test_hog_shape()
     test_mask_generator_shape_and_ratio()
     test_hog_values_finite()
-    smoke_test_data_pipeline()
+    test_data_pipeline()
     print("test_data: OK")
