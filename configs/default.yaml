@@ -1,10 +1,11 @@
 # Конфиг по умолчанию для пакета samit.
 # Соответствует таблице 4.10 диплома (раздел 4.6.6).
-# Все пути относительные; data_root указывает на каталог с тайлами.
+# Prepared dataset paths are absolute on the current training server.
 
 common:
   seed: 42
-  data_root: /hdd_pool/egarifyzanov/samit_pkg/data_tiles     # каталог, куда сложил скрипт run_tile.py
+  data_root: /hdd_pool/egarifyzanov/datasets/sa_mit_v2
+  prepared_dataset: true          # require READY.json and audited index hashes
   image_size: 512
   in_channels: 1
   num_classes: 4
@@ -12,8 +13,8 @@ common:
   hog_cell_size: 16
   hog_num_bins: 9
   ignore_index: 255
-  mean: 0.42
-  std: 0.21
+  mean: 0.19881704541655196       # new seg_train only; manifests/audit.json
+  std: 0.14982036377782001
   num_workers: 16
   use_amp: true
   grad_clip: 1.0
@@ -37,7 +38,7 @@ stages:
 
   # ----------------- ЭТАП 1 — SSL (HOG-MIM) -----------------
   ssl:
-    train_index: /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/ssl.tsv
+    train_index: /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/ssl_train.tsv
     batch_size: 64
     grad_accum: 2                 # эффективный батч 32
     epochs: 3                   # 200–300 — см. таблицу 4.10
@@ -48,15 +49,15 @@ stages:
     warmup_steps: 1500
     mask_ratio: 0.60
     block_size: 16
-    checkpoint_dir: checkpoints/ssl
-    plot_dir: results/ssl_viz
-    log_file: logs/ssl.log
+    checkpoint_dir: checkpoints/v2/ssl
+    plot_dir: results/v2/ssl_viz
+    log_file: logs/v2/ssl.log
 
   # ----------------- ЭТАП 2 — Сегментация -----------------
   seg:
-    train_index: /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/seg_train.tsv
-    val_index:   /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/seg_val.tsv
-    test_index:  /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/seg_test.tsv
+    train_index: /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/seg_train.tsv
+    val_index:   /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/seg_val.tsv
+    test_index:  /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/seg_test.tsv
     batch_size: 54
     val_batch_size: 8
     grad_accum: 4                 # эффективный батч 32
@@ -68,6 +69,6 @@ stages:
     warmup_steps: 1000
     lambda_ce: 1.0                # вес CE-слагаемого (см. SegmentationLoss)
     lambda_dice: 0.5              # вес Dice-слагаемого
-    checkpoint_dir: checkpoints/seg
-    plot_dir: results/seg_viz
-    log_file: logs/seg.log
+    checkpoint_dir: checkpoints/v2/seg
+    plot_dir: results/v2/seg_viz
+    log_file: logs/v2/seg.log

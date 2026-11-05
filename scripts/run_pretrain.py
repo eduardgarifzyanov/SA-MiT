@@ -28,6 +28,7 @@ torch.set_float32_matmul_precision("high")
 import yaml
 
 from samit.data.dataset import SARDataset
+from samit.data.integrity import validate_prepared_indices
 from samit.data.transforms import SARTransform
 from samit.data.loader import build_dataloader
 from samit.data.masking import BlockwiseMaskGenerator
@@ -54,6 +55,8 @@ def main():
         cfg = yaml.safe_load(f)
     ssl_cfg = cfg["stages"]["ssl"]
     common = cfg["common"]
+    if common.get("prepared_dataset", False):
+        validate_prepared_indices(common["data_root"], [ssl_cfg["train_index"]])
 
     distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
 

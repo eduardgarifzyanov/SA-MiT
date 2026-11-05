@@ -26,6 +26,7 @@ from torch.utils.data.distributed import DistributedSampler
 import yaml
 
 from samit.data.dataset import SARDataset
+from samit.data.integrity import validate_prepared_indices
 from samit.data.transforms import SARTransform
 from samit.data.loader import build_dataloader, DistributedEvalSampler
 from samit.models.samit import SAMiT
@@ -65,6 +66,9 @@ def main():
         cfg = yaml.safe_load(f)
     seg_cfg = cfg["stages"]["seg"]
     common = cfg["common"]
+    if common.get("prepared_dataset", False):
+        validate_prepared_indices(common["data_root"], [
+            seg_cfg["train_index"], seg_cfg["val_index"], seg_cfg["test_index"]])
 
     set_seed(common.get("seed", 42))
     log = get_logger("samit.finetune", log_file=seg_cfg.get("log_file"))

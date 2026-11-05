@@ -1,0 +1,31 @@
+# Source groups are assigned BEFORE tiling; existing data is never moved/deleted.
+output: /hdd_pool/egarifyzanov/datasets/sa_mit_v2
+seed: 42
+ratios: [0.70, 0.15, 0.15]  # group counts per dataset; tile counts may differ
+tile: 512
+stride: 384
+skip_empty: 0.98
+workers: 4
+
+labeled:
+  - name: openearthmap_sar
+    images: /hdd_pool/egarifyzanov/samit_pkg/data_raw/labeled/images
+    masks: /hdd_pool/egarifyzanov/samit_pkg/data_raw/labeled/masks
+    pattern: TrainArea_*.tif
+    mask_format: ds1
+    # Default: one raw file per group. For scene/territory grouping, supply
+    # groups: {TrainArea_1.tif: scene_a, TrainArea_2.tif: scene_a, ...}.
+
+  - name: fusar_map
+    images: /hdd_pool/egarifyzanov/samit_pkg/data_raw/labeled/images
+    masks: /hdd_pool/egarifyzanov/samit_pkg/data_raw/labeled/masks
+    pattern: '*.tif'
+    exclude_patterns: ['TrainArea_*']
+    mask_format: rgb
+    group_regex: '^([^_]+)_'
+
+ssl:
+  root: /hdd_pool/egarifyzanov/samit_pkg/data_tiles
+  index: /hdd_pool/egarifyzanov/samit_pkg/data_tiles/indices/ssl.tsv
+  raw_images: /hdd_pool/egarifyzanov/samit_pkg/data_raw/unlabeled
+  exclude_sources: []  # additional known scene overlaps, without extensions

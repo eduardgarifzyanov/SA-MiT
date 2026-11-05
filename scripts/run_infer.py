@@ -25,6 +25,7 @@ import yaml
 from PIL import Image
 
 from samit.data.dataset import SARDataset
+from samit.data.integrity import validate_prepared_indices
 from samit.data.transforms import SARTransform
 from samit.models.samit import SAMiT
 from samit.training.checkpoint import Checkpointer
@@ -79,6 +80,8 @@ def main():
         cfg = yaml.safe_load(f)
     common = cfg["common"]
     seg_cfg = cfg["stages"]["seg"]
+    if common.get("prepared_dataset", False):
+        validate_prepared_indices(common["data_root"], [seg_cfg["test_index"]])
 
     set_seed(common.get("seed", 42))
     log = get_logger("samit.infer")

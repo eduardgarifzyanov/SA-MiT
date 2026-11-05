@@ -19,8 +19,10 @@
     - SAR + маска (для этапа 2) → две колонки пути.
 
 Запуск:
-    python -m samit.data.tiler --src /data/sar_raw --dst /data/sar_tiles \\
-        --indices both --tile 512 --stride 384
+    python -m samit.data.tiler --config configs/prepare.yaml
+
+CLI delegates to the source-grouped pipeline in samit.data.prepare.
+The low-level functions below remain available for compatibility.
 """
 
 from __future__ import annotations
@@ -259,7 +261,7 @@ def process_directory(
     return total
 
 
-def main():
+def legacy_main():
     ap = argparse.ArgumentParser(description="Нарезка SAR-изображений на тайлы")
     ap.add_argument("--src-ssl", type=str, default=None,
                     help="Каталог с SAR-изображениями для этапа 1 (без масок)")
@@ -305,6 +307,12 @@ def main():
             index_basename="seg_all",
             mask_format=args.mask_format,
         )
+
+
+def main():
+    # The CLI always splits sources before generating tiles.
+    from .prepare import main as prepare_main
+    prepare_main()
 
 
 if __name__ == "__main__":
