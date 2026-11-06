@@ -29,6 +29,8 @@ from typing import Optional, Dict, Any
 import numpy as np
 import torch
 
+from .metrics import confusion_from_labels, metrics_from_confusion
+
 
 class Evaluator:
     """Оценка качества обученной модели на выборке."""
@@ -41,7 +43,11 @@ class Evaluator:
         ignore_index: int = -100,
         use_tiled: bool = False,
         tiled_kwargs: Optional[Dict[str, Any]] = None,
+        sample_groups: list[str] | None = None,
     ):
+        if sample_groups is not None and len(sample_groups) != len(dataset):
+            raise ValueError("One dataset group is required for each sample")
+        self.sample_groups = sample_groups
         self.predictor = predictor
         self.dataset = dataset
         self.num_classes = num_classes
@@ -60,12 +66,9 @@ class Evaluator:
         self.confusion = np.zeros((num_classes, num_classes), dtype=np.int64)
 
     def _update_confusion(self, pred: np.ndarray, target: np.ndarray) -> None:
-        valid = target != self.ignore_index
-        p = pred[valid].ravel()
-        t = target[valid].ravel()
-        idx = self.num_classes * t + p
-        binc = np.bincount(idx, minlength=self.num_classes**2)
-        self.confusion += binc.reshape(self.num_classes, self.num_classes)
+        self.confusion += confusion_from_labels(
+            pred, target, self.num_classes, self.ignore_index
+        )
 
     def _sample_metrics(
         self, index: int, pred: np.ndarray, target: np.ndarray
@@ -149,6 +152,7 @@ class Evaluator:
         """
         t0 = time.time()
         self.confusion.fill(0)
+        groups: dict[str, Any] = {}
         per_sample: list[dict[str, Any]] | None = [] if return_per_sample else None
         for i in range(len(self.dataset)):
             item = self.dataset[i]
@@ -162,44 +166,36 @@ class Evaluator:
                 pred_t = self.predictor.predict_tensor(image_t)
                 pred = pred_t.squeeze(0).cpu().numpy().astype(np.int64)
             self._update_confusion(pred, target)
+            if self.sample_groups is not None:
+                group = self.sample_groups[i]
+                if group not in groups:
+                    groups[group] = {
+                        "confusion": np.zeros_like(self.confusion),
+                        "samples": 0,
+                        "ignored_samples": 0,
+                    }
+                group_cm = confusion_from_labels(
+                    pred, target, self.num_classes, self.ignore_index
+                )
+                groups[group]["confusion"] += group_cm
+                groups[group]["samples"] += 1
+                groups[group]["ignored_samples"] += int(group_cm.sum() == 0)
             if per_sample is not None:
                 per_sample.append(self._sample_metrics(i, pred, target))
         elapsed = time.time() - t0
 
-        cm = self.confusion.astype(np.float64)
-        tp = np.diag(cm)
-        fp = cm.sum(axis=0) - tp
-        fn = cm.sum(axis=1) - tp
-        denom_iou = np.maximum(tp + fp + fn, 1.0)
-        iou = tp / denom_iou
-        precision = tp / np.maximum(tp + fp, 1.0)
-        recall = tp / np.maximum(tp + fn, 1.0)
-        f1 = 2.0 * precision * recall / np.maximum(precision + recall, 1e-6)
-        acc = tp.sum() / np.maximum(cm.sum(), 1.0)
-
-        # Каппа Коэна
-        n = cm.sum()
-        p_o = tp.sum() / max(n, 1.0)
-        row = cm.sum(axis=1) / max(n, 1.0)
-        col = cm.sum(axis=0) / max(n, 1.0)
-        p_e = float((row * col).sum())
-        kappa = (p_o - p_e) / max(1.0 - p_e, 1e-6)
-
-        # Взвешенная F1
-        weights = cm.sum(axis=1) / max(n, 1.0)
-        f1_weighted = float((f1 * weights).sum())
-
-        results = {
-            "pixel_accuracy": float(acc),
-            "mean_iou": float(iou.mean()),
-            "iou_per_class": iou.tolist(),
-            "f1_per_class": f1.tolist(),
-            "f1_macro": float(f1.mean()),
-            "f1_weighted": f1_weighted,
-            "kappa": float(kappa),
-            "time": elapsed,
-            "confusion_matrix": cm.astype(np.int64).tolist(),
-        }
+        results = metrics_from_confusion(self.confusion)
+        results["time"] = elapsed
+        results["samples"] = len(self.dataset)
+        if self.sample_groups is not None:
+            results["by_dataset"] = {
+                name: {
+                    **metrics_from_confusion(value["confusion"]),
+                    "samples": value["samples"],
+                    "ignored_samples": value["ignored_samples"],
+                }
+                for name, value in sorted(groups.items())
+            }
         if return_per_sample:
             return results, per_sample
         return results

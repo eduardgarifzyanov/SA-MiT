@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -30,6 +31,7 @@ from samit.models.samit import SAMiT
 from samit.training.checkpoint import Checkpointer
 from samit.inference.predictor import Predictor
 from samit.inference.evaluator import Evaluator
+from samit.inference.report import export_comparison, write_report
 from samit.inference.export import export_segmentation
 from samit.inference.visualize import overlay_prediction
 from samit.utils.seed import set_seed
@@ -141,6 +143,18 @@ def main():
         use_tiled=args.tiled,
         tiled_kwargs={"tile_size": 512, "stride": 384},
     )
+    # Prepared paths: seg/<split>/images/<dataset>/<source>/<tile>.
+    # Legacy indices remain explicitly ungrouped, without guessing provenance.
+    evaluator.sample_groups = [
+        (
+            Path(record[0]).parts[3]
+            if len(Path(record[0]).parts) >= 6
+            and Path(record[0]).parts[0] == "seg"
+            and Path(record[0]).parts[2] == "images"
+            else "ungrouped"
+        )
+        for record in test_ds.items
+    ]
     results = evaluator.run()
     with open(os.path.join(args.output, "metrics.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
@@ -153,8 +167,9 @@ def main():
     # Контрольные предсказания
     mean_val = float(common["mean"])
     std_val = float(common["std"])
+    comparisons = []
     for i in args.samples:
-        if i >= len(test_ds):
+        if not 0 <= i < len(test_ds):
             continue
         item = test_ds[i]
         image_norm = item["image"].squeeze(0)  # [H, W], уже нормализован
@@ -175,7 +190,18 @@ def main():
         Image.fromarray(overlay_prediction(image_raw, pred, colors=palette)).save(
             os.path.join(args.output, f"sample_{i:04d}_overlay.png")
         )
-    log.info("Инференс завершён.")
+        filename = f"sample_{i:04d}_comparison.png"
+        export_comparison(
+            image_raw,
+            item["label"].cpu().numpy(),
+            pred,
+            palette if palette is not None else None,
+            common.get("ignore_index", -100),
+            Path(args.output) / filename,
+        )
+        comparisons.append({"file": filename, "caption": test_ds.items[i][0]})
+    write_report(results, args.output, common.get("class_names"), comparisons)
+    log.info("Инференс завершён. Отчёт: %s/report.html", args.output)
 
 
 if __name__ == "__main__":
