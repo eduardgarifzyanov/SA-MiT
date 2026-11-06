@@ -18,8 +18,9 @@ class BlockwiseMaskGenerator:
         self.mask_ratio = mask_ratio
 
     def __call__(self, image_size: int) -> np.ndarray:
-        assert image_size % self.block_size == 0, \
-            "image_size должен делиться на block_size"
+        assert (
+            image_size % self.block_size == 0
+        ), "image_size должен делиться на block_size"
         h = w = image_size // self.block_size
         num_blocks = h * w
         num_masked = int(round(self.mask_ratio * num_blocks))

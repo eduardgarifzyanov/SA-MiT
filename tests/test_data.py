@@ -76,22 +76,32 @@ def test_data_pipeline():
         _make_synthetic_root(root, n=32, size=512)
 
         seg_dataset = SARDataset(
-            root=root, index_file=os.path.join(root, "seg.tsv"),
-            mode="seg", image_size=512,
+            root=root,
+            index_file=os.path.join(root, "seg.tsv"),
+            mode="seg",
+            image_size=512,
         )
         seg_train_loader = build_dataloader(
-            seg_dataset, batch_size=8, is_train=True,
-            num_workers=0, pin_memory=False,
+            seg_dataset,
+            batch_size=8,
+            is_train=True,
+            num_workers=0,
+            pin_memory=False,
         )
 
         ssl_dataset = SARDataset(
-            root=root, index_file=os.path.join(root, "ssl.tsv"),
-            mode="ssl", image_size=512,
+            root=root,
+            index_file=os.path.join(root, "ssl.tsv"),
+            mode="ssl",
+            image_size=512,
             mask_generator=BlockwiseMaskGenerator(block_size=16, mask_ratio=0.60),
         )
         ssl_train_loader = build_dataloader(
-            ssl_dataset, batch_size=16, is_train=True,
-            num_workers=0, pin_memory=False,
+            ssl_dataset,
+            batch_size=16,
+            is_train=True,
+            num_workers=0,
+            pin_memory=False,
         )
 
         # Режим сегментации

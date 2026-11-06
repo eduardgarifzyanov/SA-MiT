@@ -21,6 +21,7 @@ def colorize_segmentation(
     """Преобразует карту классов в цветное изображение."""
     if colors is None:
         from samit.inference.export import CLASS_COLORS
+
         colors = CLASS_COLORS
     return colors[pred.clip(0, len(colors) - 1)]
 
@@ -36,8 +37,5 @@ def overlay_prediction(
         image = (np.clip(image, 0.0, 1.0) * 255.0).astype(np.uint8)
     rgb = np.stack([image, image, image], axis=-1)
     color = colorize_segmentation(pred, colors=colors)
-    blended = (
-        (1.0 - alpha) * rgb.astype(np.float32)
-        + alpha * color.astype(np.float32)
-    )
+    blended = (1.0 - alpha) * rgb.astype(np.float32) + alpha * color.astype(np.float32)
     return blended.clip(0, 255).astype(np.uint8)

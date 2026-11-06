@@ -11,4 +11,7 @@ def resume_history(path, start_epoch):
     history = json.loads(path.read_text(encoding="utf-8"))
     epochs = history.get("epochs", list(range(len(history.get("train_loss", [])))))
     keep = [i for i, epoch in enumerate(epochs) if epoch < start_epoch]
-    return {key: [values[i] for i in keep] for key, values in dict(history, epochs=epochs).items()}
+    return {
+        key: [values[i] for i in keep]
+        for key, values in dict(history, epochs=epochs).items()
+    }

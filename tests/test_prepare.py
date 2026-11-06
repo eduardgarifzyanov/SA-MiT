@@ -12,23 +12,43 @@ import pytest
 from samit.data.dataset import SARDataset
 from samit.data.integrity import validate_prepared_indices
 from samit.data.prepare import (
-    assign_splits, discover_sources, prepare, reuse_ssl, validate_source_splits,
+    assign_splits,
+    discover_sources,
+    prepare,
+    validate_source_splits,
 )
 
 
 def make_config(tmp_path, size=12):
     images, masks = tmp_path / "raw/images", tmp_path / "raw/masks"
-    images.mkdir(parents=True); masks.mkdir()
+    images.mkdir(parents=True)
+    masks.mkdir()
     rng = np.random.default_rng(15)
     for i in range(6):
-        Image.fromarray(rng.integers(0, 256, (size, size), dtype=np.uint8)).save(images / f"scene{i}.png")
+        Image.fromarray(rng.integers(0, 256, (size, size), dtype=np.uint8)).save(
+            images / f"scene{i}.png"
+        )
         label = rng.integers(0, 4, (size, size), dtype=np.uint8)
         label[0, 0] = 255
         Image.fromarray(label).save(masks / f"scene{i}.png")
-    return dict(output=str(tmp_path / "prepared"), tile=8, stride=6, workers=1,
-                skip_empty=0, seed=42, ratios=[.7, .15, .15], labeled=[dict(
-                    name="synthetic", images=str(images), masks=str(masks),
-                    mask_format="common", pattern="*.png")])
+    return dict(
+        output=str(tmp_path / "prepared"),
+        tile=8,
+        stride=6,
+        workers=1,
+        skip_empty=0,
+        seed=42,
+        ratios=[0.7, 0.15, 0.15],
+        labeled=[
+            dict(
+                name="synthetic",
+                images=str(images),
+                masks=str(masks),
+                mask_format="common",
+                pattern="*.png",
+            )
+        ],
+    )
 
 
 def test_sources_are_split_before_tiling_and_resume(tmp_path):
@@ -38,11 +58,17 @@ def test_sources_are_split_before_tiling_and_resume(tmp_path):
     assert report["source_and_group_overlap"] == 0
     assert sum(s["sources"] for s in report["seg"].values()) == 6
     assert sum(s["tiles"] for s in report["seg"].values()) == 24
-    manifest = [json.loads(line) for line in (root / "manifests/tiles.jsonl").read_text().splitlines()]
+    manifest = [
+        json.loads(line)
+        for line in (root / "manifests/tiles.jsonl").read_text().splitlines()
+    ]
     assignments = {}
     for row in manifest:
         assert f"seg/{row['split']}/images/" in row["image"]
-        assert row["source_id"] not in assignments or assignments[row["source_id"]] == row["split"]
+        assert (
+            row["source_id"] not in assignments
+            or assignments[row["source_id"]] == row["split"]
+        )
         assignments[row["source_id"]] = row["split"]
         assert Image.open(root / row["image"]).size == (8, 8)
         assert Image.open(root / row["mask"]).size == (8, 8)
@@ -50,10 +76,13 @@ def test_sources_are_split_before_tiling_and_resume(tmp_path):
     prepare(cfg)
     assert before == {p.name: p.read_bytes() for p in (root / "indices").glob("*.tsv")}
     validate_prepared_indices(root, [root / "indices/seg_train.tsv"])
-    train_pixels = np.concatenate([
-        np.array(Image.open(root / row["image"])).ravel().astype(np.float64) / 255
-        for row in manifest if row["split"] == "train"
-    ])
+    train_pixels = np.concatenate(
+        [
+            np.array(Image.open(root / row["image"])).ravel().astype(np.float64) / 255
+            for row in manifest
+            if row["split"] == "train"
+        ]
+    )
     assert abs(report["train_normalization"]["mean"] - train_pixels.mean()) < 1e-12
     assert abs(report["train_normalization"]["std"] - train_pixels.std()) < 1e-12
     dataset = SARDataset(str(root), str(root / "indices/seg_train.tsv"))
@@ -67,8 +96,12 @@ def test_sources_are_split_before_tiling_and_resume(tmp_path):
 def test_duplicates_and_explicit_groups_cannot_cross_splits(tmp_path):
     cfg = make_config(tmp_path)
     ds = cfg["labeled"][0]
-    shutil.copyfile(Path(ds["images"]) / "scene0.png", Path(ds["images"]) / "duplicate.png")
-    shutil.copyfile(Path(ds["masks"]) / "scene0.png", Path(ds["masks"]) / "duplicate.png")
+    shutil.copyfile(
+        Path(ds["images"]) / "scene0.png", Path(ds["images"]) / "duplicate.png"
+    )
+    shutil.copyfile(
+        Path(ds["masks"]) / "scene0.png", Path(ds["masks"]) / "duplicate.png"
+    )
     ds["groups"] = {"scene1.png": "same-territory", "scene2.png": "same-territory"}
     sources = discover_sources(cfg)
     a = assign_splits(copy.deepcopy(sources))
@@ -78,10 +111,14 @@ def test_duplicates_and_explicit_groups_cannot_cross_splits(tmp_path):
     assert by_name["scene0.png"]["split"] == by_name["duplicate.png"]["split"]
     assert by_name["scene1.png"]["split"] == by_name["scene2.png"]["split"]
     bad = copy.deepcopy(a)
-    bad[-1]["split"] = next(x for x in ("train", "val", "test") if x != bad[-1]["split"])
+    bad[-1]["split"] = next(
+        x for x in ("train", "val", "test") if x != bad[-1]["split"]
+    )
     # Deliberately assign one duplicate hash to another split.
     duplicate = next(s for s in bad if Path(s["image"]).name == "duplicate.png")
-    duplicate["split"] = next(x for x in ("train", "val", "test") if x != by_name["scene0.png"]["split"])
+    duplicate["split"] = next(
+        x for x in ("train", "val", "test") if x != by_name["scene0.png"]["split"]
+    )
     with pytest.raises(ValueError, match="leakage"):
         validate_source_splits(bad)
 
@@ -90,7 +127,8 @@ def test_plan_is_frozen_and_raw_changes_rejected(tmp_path):
     cfg = make_config(tmp_path)
     plan = prepare(cfg, plan_only=True)
     assert not (Path(cfg["output"]) / "READY.json").exists()
-    changed = copy.deepcopy(cfg); changed["seed"] = 21
+    changed = copy.deepcopy(cfg)
+    changed["seed"] = 21
     with pytest.raises(ValueError, match="frozen plan"):
         prepare(changed)
     p = Path(plan["sources"][0]["image"])
@@ -126,8 +164,12 @@ def test_same_stems_in_different_subdirectories_do_not_collide(tmp_path):
     for folder in ("a", "b"):
         (Path(ds["images"]) / folder).mkdir()
         (Path(ds["masks"]) / folder).mkdir()
-        shutil.copyfile(Path(ds["images"]) / "scene0.png", Path(ds["images"]) / folder / "same.png")
-        shutil.copyfile(Path(ds["masks"]) / "scene0.png", Path(ds["masks"]) / folder / "same.png")
+        shutil.copyfile(
+            Path(ds["images"]) / "scene0.png", Path(ds["images"]) / folder / "same.png"
+        )
+        shutil.copyfile(
+            Path(ds["masks"]) / "scene0.png", Path(ds["masks"]) / folder / "same.png"
+        )
     ds["pattern"] = "**/*.png"
     plan = prepare(cfg, plan_only=True)
     ids = [s["source_id"] for s in plan["sources"]]
@@ -145,19 +187,26 @@ def test_ssl_reuse_excludes_heldout_and_renamed_copy(tmp_path):
     cfg = make_config(tmp_path)
     sources = assign_splits(discover_sources(cfg))
     heldout = next(s for s in sources if s["split"] == "test")
-    raw = tmp_path / "ssl_raw"; raw.mkdir()
-    legacy = tmp_path / "legacy"; (legacy / "images").mkdir(parents=True)
+    raw = tmp_path / "ssl_raw"
+    raw.mkdir()
+    legacy = tmp_path / "legacy"
+    (legacy / "images").mkdir(parents=True)
     heldout_stem = Path(heldout["image"]).stem
     for stem in (heldout_stem, "renamed_copy"):
         shutil.copyfile(heldout["image"], raw / f"{stem}.png")
-    Image.fromarray(np.full((12, 12), 123, dtype=np.uint8)).save(raw / "independent.png")
+    Image.fromarray(np.full((12, 12), 123, dtype=np.uint8)).save(
+        raw / "independent.png"
+    )
     (legacy / "images/independent").mkdir()
     index = legacy / "ssl.tsv"
     lines = []
     for p in raw.iterdir():
         name = p.stem + "_y00000_x00000.png"
-        destination = (legacy / "images/independent/y00000_x00000.png"
-                       if p.stem == "independent" else legacy / "images" / name)
+        destination = (
+            legacy / "images/independent/y00000_x00000.png"
+            if p.stem == "independent"
+            else legacy / "images" / name
+        )
         shutil.copyfile(p, destination)
         lines.append(f"images/{name}\n")
     lines.append("images/unknown_source_y00000_x00000.png\n")
@@ -177,7 +226,7 @@ def test_ssl_reuse_excludes_heldout_and_renamed_copy(tmp_path):
     assert Path(target.read_text().strip()).parent.name == "independent"
 
 
-@pytest.mark.parametrize("ratios", [[.8, .2, .1], [1, 0, 0], [-1, 1, 1]])
+@pytest.mark.parametrize("ratios", [[0.8, 0.2, 0.1], [1, 0, 0], [-1, 1, 1]])
 def test_invalid_ratios_rejected(ratios):
     with pytest.raises(ValueError):
         assign_splits([], ratios)
@@ -206,8 +255,8 @@ def test_interrupted_initial_scan_can_restart(tmp_path):
 
 
 def test_logging_creates_nested_directory(tmp_path):
-    import logging
     from samit.utils.logging import get_logger
+
     name = "samit.prepare-test"
     logger = get_logger(name, log_file=str(tmp_path / "logs/v2/train.log"))
     try:

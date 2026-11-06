@@ -49,28 +49,36 @@ def run_evaluation(cfg) -> Dict[str, Any]:
     # Инициализация модели и загрузка обученных весов из чекпойнта.
     model = SAMiT(in_channels=1, num_classes=cfg.num_classes)
     Checkpointer(directory=cfg.checkpoint_dir).load(
-        path=cfg.checkpoint_path, model=model, map_location=device,
+        path=cfg.checkpoint_path,
+        model=model,
+        map_location=device,
     )
 
     predictor = Predictor(
-        model=model, device=device,
-        mean=cfg.mean, std=cfg.std,
+        model=model,
+        device=device,
+        mean=cfg.mean,
+        std=cfg.std,
         use_amp=True,
     )
 
     # Тестовая выборка с детерминированными преобразованиями.
     test_ds = SARDataset(
-        root=cfg.data_root, index_file=cfg.test_index,
+        root=cfg.data_root,
+        index_file=cfg.test_index,
         transform=SARTransform(
-            image_size=getattr(cfg, "image_size", 512), mode="eval",
-            mean=cfg.mean, std=cfg.std,
+            image_size=getattr(cfg, "image_size", 512),
+            mode="eval",
+            mean=cfg.mean,
+            std=cfg.std,
         ),
         mode="seg",
     )
 
     # Совокупность метрик качества (см. таблицу 4.12).
     evaluator = Evaluator(
-        predictor=predictor, dataset=test_ds,
+        predictor=predictor,
+        dataset=test_ds,
         num_classes=cfg.num_classes,
         ignore_index=getattr(cfg, "ignore_index", 255),
         use_tiled=cfg.use_tiled,
@@ -78,21 +86,24 @@ def run_evaluation(cfg) -> Dict[str, Any]:
     )
     results = evaluator.run()
 
-    with open(os.path.join(cfg.output_dir, "metrics.json"),
-              "w", encoding="utf-8") as f:
+    with open(os.path.join(cfg.output_dir, "metrics.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
     # Экспорт нескольких контрольных предсказаний в трёх формах.
     for i in cfg.sample_indices:
         item = test_ds[i]
         image_t = item["image"].squeeze(0)
-        pred = (evaluator.tiled.predict_tensor(image_t) if evaluator.tiled is not None
-                else predictor.predict_tensor(image_t).squeeze(0).cpu().numpy())
+        pred = (
+            evaluator.tiled.predict_tensor(image_t)
+            if evaluator.tiled is not None
+            else predictor.predict_tensor(image_t).squeeze(0).cpu().numpy()
+        )
         image = (image_t.cpu().numpy() * cfg.std + cfg.mean).clip(0, 1)
         palette = getattr(cfg, "palette", None)
         palette = np.asarray(palette, dtype=np.uint8) if palette is not None else None
         export_segmentation(
-            pred, output_dir=cfg.output_dir,
+            pred,
+            output_dir=cfg.output_dir,
             base_name=f"sample_{i:04d}",
             class_colors=palette,
         )

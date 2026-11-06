@@ -22,7 +22,10 @@ avg-pool. Затем передаётся внутрь каждого SAMiTBlock
 Выход — список из 4 карт признаков: (B, C_k, H/2^{k+1}, W/2^{k+1}).
 """
 
+from typing import cast
+
 import torch
+
 import torch.nn as nn
 
 from .attention import SpeckleAwareAttention
@@ -38,8 +41,9 @@ class SAMiTBlock(nn.Module):
     s_map (карта структурной значимости), который пробрасывается во внимание.
     """
 
-    def __init__(self, dim: int, num_heads: int,
-                 sr_ratio: int = 1, expansion: int = 4) -> None:
+    def __init__(
+        self, dim: int, num_heads: int, sr_ratio: int = 1, expansion: int = 4
+    ) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
         self.attn = SpeckleAwareAttention(dim, num_heads, sr_ratio)
@@ -86,19 +90,23 @@ class SAMiTEncoder(nn.Module):
         for i in range(self.num_stages):
             self.patch_embeds.append(
                 OverlapPatchEmbed(
-                    prev_channels, embed_dims[i],
+                    prev_channels,
+                    embed_dims[i],
                     patch_size=patch_sizes[i],
                     stride=strides[i],
                 )
             )
-            blocks = nn.ModuleList([
-                SAMiTBlock(
-                    embed_dims[i], num_heads[i],
-                    sr_ratio=sr_ratios[i],
-                    expansion=expansion,
-                )
-                for _ in range(depths[i])
-            ])
+            blocks = nn.ModuleList(
+                [
+                    SAMiTBlock(
+                        embed_dims[i],
+                        num_heads[i],
+                        sr_ratio=sr_ratios[i],
+                        expansion=expansion,
+                    )
+                    for _ in range(depths[i])
+                ]
+            )
             self.stages.append(blocks)
             self.norms.append(nn.LayerNorm(embed_dims[i]))
             prev_channels = embed_dims[i]
@@ -111,17 +119,17 @@ class SAMiTEncoder(nn.Module):
         совсем дёшево), а не считается заново внутри каждого блока.
         """
         B = x.size(0)
-        x_input = x   # сохранение исходного изображения для расчёта S̃
+        x_input = x  # сохранение исходного изображения для расчёта S̃
         features = []
         feat = x
         for i in range(self.num_stages):
             feat, (H, W) = self.patch_embeds[i](feat)
             # Карта значимости для текущей стадии: (B, H·W, 1)
             s_map = compute_s_map_for_grid(x_input, H, W)
-            for block in self.stages[i]:
+            for block in cast(nn.ModuleList, self.stages[i]):
                 feat = block(feat, H, W, s_map)
             feat = self.norms[i](feat)
             feat_map = feat.transpose(1, 2).reshape(B, -1, H, W)
             features.append(feat_map)
-            feat = feat_map      # передача в следующую стадию
+            feat = feat_map  # передача в следующую стадию
         return features

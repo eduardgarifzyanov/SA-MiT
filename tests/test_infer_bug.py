@@ -1,4 +1,4 @@
-"""Prevent double normalization: raw arrays and normalized tensors have separate APIs."""
+"""Prevent double normalization of raw arrays and normalized tensors."""
 
 import sys
 from pathlib import Path
@@ -7,8 +7,12 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from samit.data.transforms import SARTransform
-from samit.inference.predictor import Predictor
+from samit.data.transforms import (  # noqa: E402
+    SARTransform,
+)
+from samit.inference.predictor import (  # noqa: E402
+    Predictor,
+)
 
 
 class DummyModel(torch.nn.Module):
@@ -20,10 +24,10 @@ class DummyModel(torch.nn.Module):
 def test_no_double_normalization():
     raw = np.random.default_rng(0).integers(0, 256, (256, 256), dtype=np.uint8)
     model = DummyModel()
-    predictor = Predictor(model, device="cpu", mean=.42, std=.21, use_amp=False)
+    predictor = Predictor(model, device="cpu", mean=0.42, std=0.21, use_amp=False)
     predictor.predict(raw)
     expected = model.last_input.clone()
-    normalized, _ = SARTransform(image_size=256, mode="eval", mean=.42, std=.21)(
+    normalized, _ = SARTransform(image_size=256, mode="eval", mean=0.42, std=0.21)(
         raw.astype(np.float32) / 255, None
     )
     try:

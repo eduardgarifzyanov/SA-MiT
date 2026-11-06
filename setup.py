@@ -70,9 +70,9 @@ setup(
         "dev": [
             "pytest>=7.4",
             "pytest-cov>=4.1",
-            "flake8>=6.1",
-            "black>=23.7",
-            "mypy>=1.5",
+            "flake8==7.3.0",
+            "black==26.10.1",
+            "mypy==2.4.1",
         ],
     },
     classifiers=[

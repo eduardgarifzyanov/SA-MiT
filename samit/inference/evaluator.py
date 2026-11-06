@@ -46,8 +46,11 @@ class Evaluator:
         self.dataset = dataset
         self.num_classes = num_classes
         self.ignore_index = ignore_index
+        from samit.inference.tiled import TiledInference
+
+        self.tiled: TiledInference | None = None
         if use_tiled:
-            from samit.inference.tiled import TiledInference
+
             kwargs = tiled_kwargs or {}
             self.tiled = TiledInference(
                 predictor=predictor, num_classes=num_classes, **kwargs
@@ -61,10 +64,12 @@ class Evaluator:
         p = pred[valid].ravel()
         t = target[valid].ravel()
         idx = self.num_classes * t + p
-        binc = np.bincount(idx, minlength=self.num_classes ** 2)
+        binc = np.bincount(idx, minlength=self.num_classes**2)
         self.confusion += binc.reshape(self.num_classes, self.num_classes)
 
-    def _sample_metrics(self, index: int, pred: np.ndarray, target: np.ndarray) -> Dict[str, Any]:
+    def _sample_metrics(
+        self, index: int, pred: np.ndarray, target: np.ndarray
+    ) -> Dict[str, Any]:
         """Метрики для ОДНОГО изображения — используется качественным
         анализом раздела 4.8.8 для отбора «типичных» (рис. 4.9) и
         «сложных» (рис. 4.10) фрагментов.
@@ -99,7 +104,7 @@ class Evaluator:
         p = pred[valid].ravel()
         t = target[valid].ravel()
         idx = self.num_classes * t + p
-        binc = np.bincount(idx, minlength=self.num_classes ** 2)
+        binc = np.bincount(idx, minlength=self.num_classes**2)
         cm = binc.reshape(self.num_classes, self.num_classes).astype(np.float64)
         tp = np.diag(cm)
         fp = cm.sum(axis=0) - tp
@@ -144,7 +149,7 @@ class Evaluator:
         """
         t0 = time.time()
         self.confusion.fill(0)
-        per_sample = [] if return_per_sample else None
+        per_sample: list[dict[str, Any]] | None = [] if return_per_sample else None
         for i in range(len(self.dataset)):
             item = self.dataset[i]
             # item["image"] имеет форму [1, H, W] и УЖЕ нормализован (mean/std).
@@ -157,7 +162,7 @@ class Evaluator:
                 pred_t = self.predictor.predict_tensor(image_t)
                 pred = pred_t.squeeze(0).cpu().numpy().astype(np.int64)
             self._update_confusion(pred, target)
-            if return_per_sample:
+            if per_sample is not None:
                 per_sample.append(self._sample_metrics(i, pred, target))
         elapsed = time.time() - t0
 

@@ -8,7 +8,7 @@ scripts/qualitative_report.py — качественный анализ резу
 samit/inference/evaluator.py). По этим метрикам отбираются:
 
   * «типичные» (рис. 4.9, N=3 по умолчанию) — изображения, чей
-    pixel_error_rate БЛИЖЕ ВСЕГО К СРЕДНЕМУ по подвыборке. 
+    pixel_error_rate БЛИЖЕ ВСЕГО К СРЕДНЕМУ по подвыборке.
   * «сложные» (рис. 4.10) — N изображений с НАИБОЛЬШИМ pixel_error_rate.
 
 Изображения с valid_pixels == 0 (тайл целиком ignore_index) исключаются
@@ -34,20 +34,23 @@ import numpy as np
 import torch
 import yaml
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.patches as mpatches  # noqa: E402
 
-from samit.data.dataset import SARDataset
-from samit.data.transforms import SARTransform
-from samit.models.samit import SAMiT
-from samit.training.checkpoint import Checkpointer
-from samit.inference.predictor import Predictor
-from samit.inference.evaluator import Evaluator
-from samit.inference.visualize import colorize_segmentation, overlay_prediction
-from samit.utils.seed import set_seed
-from samit.utils.logging import get_logger
-
+from samit.data.dataset import SARDataset  # noqa: E402
+from samit.data.transforms import SARTransform  # noqa: E402
+from samit.models.samit import SAMiT  # noqa: E402
+from samit.training.checkpoint import Checkpointer  # noqa: E402
+from samit.inference.predictor import Predictor  # noqa: E402
+from samit.inference.evaluator import Evaluator  # noqa: E402
+from samit.inference.visualize import (  # noqa: E402
+    colorize_segmentation,
+    overlay_prediction,
+)
+from samit.utils.seed import set_seed  # noqa: E402
+from samit.utils.logging import get_logger  # noqa: E402
 
 # Нейтральный цвет для ignore_index на рис. эталонной разметки (не должен
 # совпадать ни с одним цветом палитры классов).
@@ -59,14 +62,34 @@ def parse_args():
     p.add_argument("--config", type=str, default="configs/default.yaml")
     p.add_argument("--checkpoint", type=str, required=True)
     p.add_argument("--output", type=str, default="results/seg_viz")
-    p.add_argument("--tiled", action="store_true",
-                   help="Использовать TiledInference (для больших изображений)")
-    p.add_argument("--n", type=int, default=3,
-                   help="Число примеров в каждой категории (по умолчанию 3 — как на рис. 4.9/4.10)")
-    p.add_argument("--typical-indices", type=int, nargs="*", default=None,
-                   help="Ручной список индексов для «типичных» (переопределяет автоотбор)")
-    p.add_argument("--hard-indices", type=int, nargs="*", default=None,
-                   help="Ручной список индексов для «сложных» (переопределяет автоотбор)")
+    p.add_argument(
+        "--tiled",
+        action="store_true",
+        help="Использовать TiledInference (для больших изображений)",
+    )
+    p.add_argument(
+        "--n",
+        type=int,
+        default=3,
+        help=(
+            "Число примеров в каждой категории (по умолчанию 3 — как "
+            "на рис. 4.9/4.10)"
+        ),
+    )
+    p.add_argument(
+        "--typical-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Ручной список индексов для «типичных» (переопределяет автоотбор)",
+    )
+    p.add_argument(
+        "--hard-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Ручной список индексов для «сложных» (переопределяет автоотбор)",
+    )
     return p.parse_args()
 
 
@@ -95,11 +118,15 @@ def select_examples(
     valid = [s for s in per_sample if s["valid_pixels"] > 0]
     excluded = len(per_sample) - len(valid)
     if excluded:
-        print(f"[qualitative_report] пропущено {excluded} изображени(й) без "
-              f"валидных пикселей (целиком ignore_index) — не участвуют в отборе")
+        print(
+            f"[qualitative_report] пропущено {excluded} изображени(й) без "
+            f"валидных пикселей (целиком ignore_index) — не участвуют в отборе"
+        )
     if not valid:
-        raise RuntimeError("Нет ни одного изображения с валидными пикселями — "
-                            "отбор примеров невозможен.")
+        raise RuntimeError(
+            "Нет ни одного изображения с валидными пикселями — "
+            "отбор примеров невозможен."
+        )
 
     mean_error = float(np.mean([s["pixel_error_rate"] for s in valid]))
 
@@ -114,12 +141,16 @@ def select_examples(
     typical = typical_sorted[:n]
 
     if len(hard) < n:
-        print(f"[qualitative_report] предупреждение: запрошено n={n} «сложных», "
-              f"но валидных образцов всего {len(valid)} — взято {len(hard)}")
+        print(
+            f"[qualitative_report] предупреждение: запрошено n={n} «сложных», "
+            f"но валидных образцов всего {len(valid)} — взято {len(hard)}"
+        )
     if len(typical) < n:
-        print(f"[qualitative_report] предупреждение: для «типичных» осталось "
-              f"только {len(typical)} образцов после исключения «сложных» "
-              f"(запрошено n={n}) — выборка может быть слишком мала")
+        print(
+            f"[qualitative_report] предупреждение: для «типичных» осталось "
+            f"только {len(typical)} образцов после исключения «сложных» "
+            f"(запрошено n={n}) — выборка может быть слишком мала"
+        )
 
     return typical, hard, mean_error
 
@@ -142,8 +173,12 @@ def build_figure(
         print(f"[qualitative_report] нет примеров для «{title}» — фигура не строится")
         return
 
-    col_titles = ["Исходное РЛИ", "Эталонная разметка",
-                  "Предсказание SA-MiT", "Наложение предсказания"]
+    col_titles = [
+        "Исходное РЛИ",
+        "Эталонная разметка",
+        "Предсказание SA-MiT",
+        "Наложение предсказания",
+    ]
     fig, axes = plt.subplots(n, 4, figsize=(4 * 3.4, n * 3.4 + 0.6), squeeze=False)
 
     for row, info in enumerate(indices_info):
@@ -165,7 +200,8 @@ def build_figure(
 
         rel_path = dataset.items[idx][0] if hasattr(dataset, "items") else None
         caption = (
-            f"#{idx}" + (f"\n{os.path.basename(rel_path)}" if rel_path else "")
+            f"#{idx}"
+            + (f"\n{os.path.basename(rel_path)}" if rel_path else "")
             + f"\nerror={info['pixel_error_rate'] * 100:.2f}%"
             f"\nmIoU={info['mean_iou_present']:.3f}"
         )
@@ -182,20 +218,39 @@ def build_figure(
             if row == 0:
                 ax.set_title(col_titles[col], fontsize=11)
             if col == 0:
-                ax.set_ylabel(caption, fontsize=8, rotation=0,
-                               ha="right", va="center", labelpad=42)
+                ax.set_ylabel(
+                    caption,
+                    fontsize=8,
+                    rotation=0,
+                    ha="right",
+                    va="center",
+                    labelpad=42,
+                )
 
     legend_patches = [
-        mpatches.Patch(facecolor=tuple(palette[i] / 255.0), edgecolor="black",
-                        linewidth=0.6, label=class_names[i])
+        mpatches.Patch(
+            facecolor=tuple(palette[i] / 255.0),
+            edgecolor="black",
+            linewidth=0.6,
+            label=class_names[i],
+        )
         for i in range(len(class_names))
     ]
     legend_patches.append(
-        mpatches.Patch(facecolor=tuple(c / 255.0 for c in IGNORE_COLOR),
-                        edgecolor="black", linewidth=0.6, label="ignore_index")
+        mpatches.Patch(
+            facecolor=tuple(c / 255.0 for c in IGNORE_COLOR),
+            edgecolor="black",
+            linewidth=0.6,
+            label="ignore_index",
+        )
     )
-    fig.legend(handles=legend_patches, loc="lower center",
-               ncol=len(legend_patches), fontsize=9, bbox_to_anchor=(0.5, -0.02))
+    fig.legend(
+        handles=legend_patches,
+        loc="lower center",
+        ncol=len(legend_patches),
+        fontsize=9,
+        bbox_to_anchor=(0.5, -0.02),
+    )
 
     fig.suptitle(title, fontsize=13)
     fig.tight_layout(rect=(0, 0.045, 1, 0.96))
@@ -222,8 +277,13 @@ def write_selection_report(
 
     report = {
         "mean_pixel_error_rate_over_test": mean_error,
-        "typical_selection_rule": "N образцов, ближайших к среднему pixel_error_rate (рис. 4.9)",
-        "hard_selection_rule": "N образцов с максимальным pixel_error_rate (рис. 4.10, по тексту диплома)",
+        "typical_selection_rule": (
+            "N образцов, ближайших к среднему " "pixel_error_rate (рис. 4.9)"
+        ),
+        "hard_selection_rule": (
+            "N образцов с максимальным pixel_error_rate "
+            "(рис. 4.10, по тексту диплома)"
+        ),
         "typical": [entry(s) for s in typical],
         "hard": [entry(s) for s in hard],
     }
@@ -261,11 +321,15 @@ def main():
         hog_dim=common["hog_dim"],
     )
     Checkpointer(directory=seg_cfg["checkpoint_dir"]).load(
-        path=args.checkpoint, model=model, map_location=device,
+        path=args.checkpoint,
+        model=model,
+        map_location=device,
     )
     predictor = Predictor(
-        model=model, device=device,
-        mean=common["mean"], std=common["std"],
+        model=model,
+        device=device,
+        mean=common["mean"],
+        std=common["std"],
         use_amp=common.get("use_amp", True),
     )
 
@@ -274,8 +338,10 @@ def main():
         root=common["data_root"],
         index_file=seg_cfg["test_index"],
         transform=SARTransform(
-            image_size=common["image_size"], mode="eval",
-            mean=common["mean"], std=common["std"],
+            image_size=common["image_size"],
+            mode="eval",
+            mean=common["mean"],
+            std=common["std"],
         ),
         mode="seg",
         image_size=common["image_size"],
@@ -283,7 +349,8 @@ def main():
     log.info(f"test: {len(test_ds)} samples")
 
     evaluator = Evaluator(
-        predictor=predictor, dataset=test_ds,
+        predictor=predictor,
+        dataset=test_ds,
         num_classes=num_classes,
         ignore_index=ignore_index,
         use_tiled=args.tiled,
@@ -314,34 +381,61 @@ def main():
                 hard = selected
 
     log.info(f"средний pixel_error_rate по тесту: {mean_error * 100:.2f}%")
-    log.info("типичные (рис. 4.9): " +
-             ", ".join(f"#{s['index']}(err={s['pixel_error_rate'] * 100:.1f}%)" for s in typical))
-    log.info("сложные  (рис. 4.10): " +
-             ", ".join(f"#{s['index']}(err={s['pixel_error_rate'] * 100:.1f}%)" for s in hard))
+    log.info(
+        "типичные (рис. 4.9): "
+        + ", ".join(
+            f"#{s['index']}(err={s['pixel_error_rate'] * 100:.1f}%)" for s in typical
+        )
+    )
+    log.info(
+        "сложные  (рис. 4.10): "
+        + ", ".join(
+            f"#{s['index']}(err={s['pixel_error_rate'] * 100:.1f}%)" for s in hard
+        )
+    )
 
     mean_val = float(common["mean"])
     std_val = float(common["std"])
 
     build_figure(
-        typical, test_ds, predictor, evaluator.tiled,
-        mean_val, std_val, palette, class_names, ignore_index,
+        typical,
+        test_ds,
+        predictor,
+        evaluator.tiled,
+        mean_val,
+        std_val,
+        palette,
+        class_names,
+        ignore_index,
         title="Рис. 4.9 — типичные фрагменты тестовой выборки",
         out_path=os.path.join(args.output, "fig_4_9_typical.png"),
     )
     build_figure(
-        hard, test_ds, predictor, evaluator.tiled,
-        mean_val, std_val, palette, class_names, ignore_index,
+        hard,
+        test_ds,
+        predictor,
+        evaluator.tiled,
+        mean_val,
+        std_val,
+        palette,
+        class_names,
+        ignore_index,
         title="Рис. 4.10 — сложные фрагменты (повышенная попиксельная ошибка)",
         out_path=os.path.join(args.output, "fig_4_10_hard.png"),
     )
     write_selection_report(
-        typical, hard, mean_error, test_ds,
+        typical,
+        hard,
+        mean_error,
+        test_ds,
         path=os.path.join(args.output, "qualitative_selection.json"),
     )
 
-    log.info(f"Готово: {args.output}/fig_4_9_typical.png, "
-             f"{args.output}/fig_4_10_hard.png, "
-             f"{args.output}/qualitative_selection.json")
+    log.info(
+        f"Готово: {args.output}/fig_4_9_typical.png, "
+        f"{args.output}/fig_4_10_hard.png, "
+        f"{args.output}/qualitative_selection.json"
+    )
 
 
 if __name__ == "__main__":

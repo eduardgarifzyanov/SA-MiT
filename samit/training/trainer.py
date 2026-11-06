@@ -107,7 +107,7 @@ class TwoStageTrainer:
 
     def train_one_epoch(self, epoch: int, logger=None) -> dict:
         sampler = getattr(self.train_loader, "sampler", None)
-        if hasattr(sampler, "set_epoch"):
+        if sampler is not None and hasattr(sampler, "set_epoch"):
             sampler.set_epoch(epoch)
         self.model.train()
         running_loss = 0.0
@@ -117,7 +117,9 @@ class TwoStageTrainer:
 
         num_batches = len(self.train_loader)
         if num_batches == 0:
-            raise ValueError("Training loader has no batches; reduce batch_size or check the dataset")
+            raise ValueError(
+                "Training loader has no batches; reduce batch_size or check the dataset"
+            )
         for i, batch in enumerate(self.train_loader):
             group_start = (i // self.grad_accum_steps) * self.grad_accum_steps
             group_size = min(self.grad_accum_steps, num_batches - group_start)
@@ -134,7 +136,8 @@ class TwoStageTrainer:
                 if self.grad_clip is not None:
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.grad_clip,
+                        self.model.parameters(),
+                        self.grad_clip,
                     )
                 old_scale = self.scaler.get_scale()
                 self.scaler.step(self.optimizer)
@@ -156,9 +159,11 @@ class TwoStageTrainer:
 
             running_loss += loss.item() * group_size
             running_count += 1
-            if (self.is_main_process and self.progress_logger is not None
-                    and ((i + 1) % max(1, self.log_interval) == 0
-                         or i + 1 == num_batches)):
+            if (
+                self.is_main_process
+                and self.progress_logger is not None
+                and ((i + 1) % max(1, self.log_interval) == 0 or i + 1 == num_batches)
+            ):
                 elapsed = time.time() - t0
                 batches_per_second = (i + 1) / max(elapsed, 1e-9)
                 eta = (num_batches - i - 1) / batches_per_second
@@ -167,16 +172,22 @@ class TwoStageTrainer:
                     "stage=%s epoch=%d batch=%d/%d progress=%.2f%% "
                     "loss_local=%.6f updates=%d lr=%.3g "
                     "batches_per_second=%.3f epoch_eta_seconds=%.0f",
-                    self.stage, epoch + 1, i + 1, num_batches,
+                    self.stage,
+                    epoch + 1,
+                    i + 1,
+                    num_batches,
                     100 * (i + 1) / num_batches,
-                    running_loss / running_count, self.global_step,
+                    running_loss / running_count,
+                    self.global_step,
                     self.optimizer.param_groups[0]["lr"],
-                    batches_per_second, eta,
+                    batches_per_second,
+                    eta,
                 )
 
         if self.distributed:
-            stats = torch.tensor([running_loss, running_count],
-                                 dtype=torch.float64, device=self.device)
+            stats = torch.tensor(
+                [running_loss, running_count], dtype=torch.float64, device=self.device
+            )
             dist.all_reduce(stats)
             running_loss, running_count = stats.tolist()
         avg_loss = running_loss / max(1, running_count)
@@ -214,8 +225,9 @@ class TwoStageTrainer:
             confusion = self.metrics.confusion.to(self.device)
             dist.all_reduce(confusion)
             self.metrics.confusion = confusion.cpu()
-            stats = torch.tensor([val_loss, count], dtype=torch.float64,
-                                 device=self.device)
+            stats = torch.tensor(
+                [val_loss, count], dtype=torch.float64, device=self.device
+            )
             dist.all_reduce(stats)
             val_loss, count = stats.tolist()
         result = self.metrics.compute()
@@ -227,13 +239,19 @@ class TwoStageTrainer:
 
     # ----- ВНЕШНИЙ ВЫЗОВ -----
 
-    def fit(self, num_epochs: int, start_epoch: int = 0, logger=None, history=None) -> dict:
+    def fit(
+        self, num_epochs: int, start_epoch: int = 0, logger=None, history=None
+    ) -> dict:
 
-        history = {key: list(values) for key, values in history.items()} if history else {
-            "train_loss": [],
-            "val_loss": [],
-            "mean_iou": [],
-        }
+        history = (
+            {key: list(values) for key, values in history.items()}
+            if history
+            else {
+                "train_loss": [],
+                "val_loss": [],
+                "mean_iou": [],
+            }
+        )
         history.setdefault("epochs", list(range(len(history["train_loss"]))))
 
         for epoch in range(start_epoch, num_epochs):
@@ -244,24 +262,20 @@ class TwoStageTrainer:
                 logger=logger,
             )
 
-            val_stats = self.validate(
-                logger=logger,
-                epoch=epoch,
-            ) if (epoch + 1) % self.val_interval == 0 else {}
-
-            history["train_loss"].append(
-                train_stats["loss"]
+            val_stats = (
+                self.validate(
+                    logger=logger,
+                    epoch=epoch,
+                )
+                if (epoch + 1) % self.val_interval == 0
+                else {}
             )
 
-            history["val_loss"].append(
-                val_stats.get("val_loss")
-                if val_stats else None
-            )
+            history["train_loss"].append(train_stats["loss"])
 
-            history["mean_iou"].append(
-                val_stats.get("mean_iou")
-                if val_stats else None
-            )
+            history["val_loss"].append(val_stats.get("val_loss") if val_stats else None)
+
+            history["mean_iou"].append(val_stats.get("mean_iou") if val_stats else None)
             # SSL: валидации нет — в качестве метрики для выбора best.pt
             # берём train_loss (чекпоинтер должен быть создан с mode='min').
             # Seg: используем val_mIoU (mode='max' по умолчанию).
@@ -274,9 +288,7 @@ class TwoStageTrainer:
             if self.checkpointer is not None and self.is_main_process:
 
                 model_to_save = (
-                    self.model.module
-                    if hasattr(self.model, "module")
-                    else self.model
+                    self.model.module if hasattr(self.model, "module") else self.model
                 )
 
                 self.checkpointer.save(
@@ -295,10 +307,7 @@ class TwoStageTrainer:
                 )
 
                 if val_stats:
-                    msg += (
-                        f"  val_mIoU="
-                        f"{val_stats.get('mean_iou', 0):.4f}"
-                    )
+                    msg += f"  val_mIoU=" f"{val_stats.get('mean_iou', 0):.4f}"
 
                 if self.progress_logger is not None:
                     self.progress_logger.info(msg)

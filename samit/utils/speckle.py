@@ -23,14 +23,13 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-
 # Ядра Собеля 3×3 — определены как буфер модуля бы дорого; держим в функции.
-_SOBEL_X = torch.tensor(
-    [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]]
-).view(1, 1, 3, 3)
-_SOBEL_Y = torch.tensor(
-    [[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]]
-).view(1, 1, 3, 3)
+_SOBEL_X = torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]]).view(
+    1, 1, 3, 3
+)
+_SOBEL_Y = torch.tensor([[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]]).view(
+    1, 1, 3, 3
+)
 
 
 def sobel_magnitude(x: torch.Tensor) -> torch.Tensor:
@@ -78,12 +77,12 @@ def compute_s_map_for_grid(
         Карта S̃_j ∈ [0, 1] на разрешении токенов стадии.
     """
     B, _, H_in, W_in = x.shape
-    assert 1 <= H <= H_in and 1 <= W <= W_in, (
-        f"Целевая сетка {H}x{W} крупнее входа {H_in}x{W_in}"
-    )
+    assert (
+        1 <= H <= H_in and 1 <= W <= W_in
+    ), f"Целевая сетка {H}x{W} крупнее входа {H_in}x{W_in}"
 
     # |∇I| по Собелю на исходном разрешении (один раз).
-    g = sobel_magnitude(x)                                # (B, 1, H_in, W_in)
+    g = sobel_magnitude(x)  # (B, 1, H_in, W_in)
 
     # Усреднение по эффективному патчу p_k × p_k.
     # Identical to fixed average pooling for divisible shapes; all input

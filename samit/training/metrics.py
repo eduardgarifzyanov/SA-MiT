@@ -18,19 +18,20 @@ class SegmentationMetrics:
 
     def reset(self) -> None:
         self.confusion = torch.zeros(
-            (self.num_classes, self.num_classes), dtype=torch.int64,
+            (self.num_classes, self.num_classes),
+            dtype=torch.int64,
         )
 
     @torch.no_grad()
     def update(self, logits: torch.Tensor, target: torch.Tensor) -> None:
         pred = logits.argmax(dim=1)
-        valid = (target != self.ignore_index)
+        valid = target != self.ignore_index
         pred = pred[valid]
         true = target[valid]
         idx = self.num_classes * true + pred
         binc = torch.bincount(
             idx.view(-1).cpu(),
-            minlength=self.num_classes ** 2,
+            minlength=self.num_classes**2,
         )
         self.confusion += binc.view(self.num_classes, self.num_classes)
 

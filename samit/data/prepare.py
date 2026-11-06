@@ -66,7 +66,9 @@ Old checkpoints and metrics must not be reused as independent-test results.
     for split, counts in report["seg"].items():
         text += f"{split}: {counts['sources']} sources, {counts['tiles']} tiles\n"
     text += f"SSL train: {report['ssl']['tiles']} external tiles\n"
-    text += "Train-only normalization: " + json.dumps(report["train_normalization"]) + "\n"
+    text += (
+        "Train-only normalization: " + json.dumps(report["train_normalization"]) + "\n"
+    )
     with atomic_index(Path(output) / "README.md") as f:
         f.write(text)
 
@@ -102,10 +104,16 @@ def discover_sources(cfg):
         if fmt not in ("common", "ds1", "rgb"):
             raise ValueError("mask_format must be explicit: common, ds1 or rgb")
         group_overrides = ds.get("groups", {})
-        found = sorted(p for p in image_root.glob(ds.get("pattern", "**/*"))
-                       if p.is_file() and p.suffix.lower() in IMAGE_EXT
-                       and not any(fnmatch.fnmatch(p.relative_to(image_root).as_posix(), pat)
-                                   for pat in ds.get("exclude_patterns", [])))
+        found = sorted(
+            p
+            for p in image_root.glob(ds.get("pattern", "**/*"))
+            if p.is_file()
+            and p.suffix.lower() in IMAGE_EXT
+            and not any(
+                fnmatch.fnmatch(p.relative_to(image_root).as_posix(), pat)
+                for pat in ds.get("exclude_patterns", [])
+            )
+        )
         if not found:
             raise ValueError(f"No images matched dataset {name}")
         for number, p in enumerate(found, 1):
@@ -114,17 +122,25 @@ def discover_sources(cfg):
                 raise ValueError(f"Image matched more than once: {p}")
             seen_paths.add(p)
             relative = p.relative_to(image_root)
-            candidates = [mask_root / relative.with_suffix(ext) for ext in sorted(IMAGE_EXT)]
+            candidates = [
+                mask_root / relative.with_suffix(ext) for ext in sorted(IMAGE_EXT)
+            ]
             candidates = [q for q in candidates if q.is_file()]
             if len(candidates) != 1:
-                raise ValueError(f"Expected one matching mask for {p}, found {len(candidates)}")
+                raise ValueError(
+                    f"Expected one matching mask for {p}, found {len(candidates)}"
+                )
             mask_path = candidates[0].resolve()
             image = load_grayscale(p)
             mask = load_mask(mask_path, fmt)
             if image.ndim != 2 or mask.shape != image.shape:
                 raise ValueError(f"Image/mask shape mismatch: {p}")
             image_hash = digest_array(image)
-            source_id = safe_name(p.stem) + "_" + hashlib.sha256(str(relative).encode()).hexdigest()[:10]
+            source_id = (
+                safe_name(p.stem)
+                + "_"
+                + hashlib.sha256(str(relative).encode()).hexdigest()[:10]
+            )
             group = group_overrides.get(relative.as_posix())
             if group is None:
                 regex = ds.get("group_regex")
@@ -135,22 +151,32 @@ def discover_sources(cfg):
                     group = match.group(1)
                 else:
                     group = relative.as_posix()
-            sources.append({
-                "dataset": name, "source_id": source_id, "image": str(p),
-                "mask": str(mask_path), "relative_source": relative.as_posix(),
-                "mask_format": fmt, "group": f"{name}:{group}",
-                "image_hash": image_hash, "mask_hash": digest_array(mask),
-                "shape": list(image.shape),
-                "image_stat": [p.stat().st_size, p.stat().st_mtime_ns],
-                "mask_stat": [mask_path.stat().st_size, mask_path.stat().st_mtime_ns],
-            })
+            sources.append(
+                {
+                    "dataset": name,
+                    "source_id": source_id,
+                    "image": str(p),
+                    "mask": str(mask_path),
+                    "relative_source": relative.as_posix(),
+                    "mask_format": fmt,
+                    "group": f"{name}:{group}",
+                    "image_hash": image_hash,
+                    "mask_hash": digest_array(mask),
+                    "shape": list(image.shape),
+                    "image_stat": [p.stat().st_size, p.stat().st_mtime_ns],
+                    "mask_stat": [
+                        mask_path.stat().st_size,
+                        mask_path.stat().st_mtime_ns,
+                    ],
+                }
+            )
             if number % 250 == 0:
                 print(f"validating {name}: {number}/{len(found)} sources", flush=True)
         print(f"validated {name}: {len(found)} source pairs", flush=True)
     return sources
 
 
-def assign_splits(sources, ratios=(.7, .15, .15), seed=42):
+def assign_splits(sources, ratios=(0.7, 0.15, 0.15), seed=42):
     """Union explicit groups and identical images, then split whole components."""
     if len(ratios) != 3 or any(r <= 0 for r in ratios) or abs(sum(ratios) - 1) > 1e-8:
         raise ValueError("Three positive split ratios must sum to 1")
@@ -181,7 +207,9 @@ def assign_splits(sources, ratios=(.7, .15, .15), seed=42):
         keys.sort()
         random.Random(f"{seed}:{stratum}").shuffle(keys)
         if len(keys) < 3:
-            raise ValueError(f"Need at least 3 independent groups for {stratum}; got {len(keys)}")
+            raise ValueError(
+                f"Need at least 3 independent groups for {stratum}; got {len(keys)}"
+            )
         n_val = max(1, round(len(keys) * ratios[1]))
         n_test = max(1, round(len(keys) * ratios[2]))
         if n_val + n_test >= len(keys):
@@ -230,7 +258,10 @@ def _cached_tiles_valid(tiles, output, tile_size):
                     image.load()
                     if image.mode != "L" or image.size != (tile_size, tile_size):
                         return False
-                    if kind == "mask" and not np.isin(np.asarray(image), [0, 1, 2, 3, 255]).all():
+                    if (
+                        kind == "mask"
+                        and not np.isin(np.asarray(image), [0, 1, 2, 3, 255]).all()
+                    ):
                         return False
             except (OSError, ValueError):
                 return False
@@ -245,7 +276,12 @@ def _tile_source(task):
     image_dir = Path("seg") / split / "images" / dataset / sid
     mask_dir = Path("seg") / split / "masks" / dataset / sid
     done = output / "manifests" / "completed" / dataset / f"{sid}.json"
-    identity = {"source": source, "tile": tile, "stride": stride, "skip_empty": skip_empty}
+    identity = {
+        "source": source,
+        "tile": tile,
+        "stride": stride,
+        "skip_empty": skip_empty,
+    }
     for field in ("image", "mask"):
         stat = Path(source[field]).stat()
         if [stat.st_size, stat.st_mtime_ns] != source[field + "_stat"]:
@@ -260,7 +296,10 @@ def _tile_source(task):
             return cached
     image = load_grayscale(Path(source["image"]))
     mask = load_mask(Path(source["mask"]), source["mask_format"])
-    if digest_array(image) != source["image_hash"] or digest_array(mask) != source["mask_hash"]:
+    if (
+        digest_array(image) != source["image_hash"]
+        or digest_array(mask) != source["mask_hash"]
+    ):
         raise ValueError(f"Raw source changed after split planning: {sid}")
     h, w = image.shape
     ph, pw = max(0, tile - h), max(0, tile - w)
@@ -276,9 +315,11 @@ def _tile_source(task):
     skipped = 0
     for y in positions(h, tile, stride):
         for x in positions(w, tile, stride):
-            im = image[y:y+tile, x:x+tile]
-            ma = mask[y:y+tile, x:x+tile]
-            if (skip_empty > 0 and float((im == 0).mean()) >= skip_empty) or np.all(ma == 255):
+            im = image[y : y + tile, x : x + tile]
+            ma = mask[y : y + tile, x : x + tile]
+            if (skip_empty > 0 and float((im == 0).mean()) >= skip_empty) or np.all(
+                ma == 255
+            ):
                 skipped += 1
                 continue
             name = f"y{y:06d}_x{x:06d}.png"
@@ -290,13 +331,25 @@ def _tile_source(task):
             intensity_sum += float(values.sum())
             intensity_sum_sq += float(np.square(values).sum())
             intensity_pixels += values.size
-            rows.append({"image": ip.as_posix(), "mask": mp.as_posix(), "y": y, "x": x,
-                         "image_sha256": file_sha256(output / ip),
-                         "mask_sha256": file_sha256(output / mp)})
-    result = {"identity": identity, "tiles": rows, "skipped": skipped,
-              "class_pixels": class_pixels.tolist(),
-              "intensity_sum": intensity_sum, "intensity_sum_sq": intensity_sum_sq,
-              "intensity_pixels": intensity_pixels}
+            rows.append(
+                {
+                    "image": ip.as_posix(),
+                    "mask": mp.as_posix(),
+                    "y": y,
+                    "x": x,
+                    "image_sha256": file_sha256(output / ip),
+                    "mask_sha256": file_sha256(output / mp),
+                }
+            )
+    result = {
+        "identity": identity,
+        "tiles": rows,
+        "skipped": skipped,
+        "class_pixels": class_pixels.tolist(),
+        "intensity_sum": intensity_sum,
+        "intensity_sum_sq": intensity_sum_sq,
+        "intensity_pixels": intensity_pixels,
+    }
     write_json(done, result)
     return result
 
@@ -311,15 +364,21 @@ def reuse_ssl(cfg, sources, output):
         return {"tiles": 0, "sources": 0, "excluded_tiles": 0}
     legacy_root = Path(ssl["root"]).resolve(strict=True)
     raw_root = Path(ssl["raw_images"]).resolve(strict=True)
-    raw_sources = {p.stem: p for p in raw_root.iterdir()
-                   if p.is_file() and p.suffix.lower() in IMAGE_EXT}
-    if len(raw_sources) != sum(1 for p in raw_root.iterdir()
-                              if p.is_file() and p.suffix.lower() in IMAGE_EXT):
+    raw_sources = {
+        p.stem: p
+        for p in raw_root.iterdir()
+        if p.is_file() and p.suffix.lower() in IMAGE_EXT
+    }
+    if len(raw_sources) != sum(
+        1 for p in raw_root.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXT
+    ):
         raise ValueError("Duplicate SSL source stems")
     heldout = {Path(s["image"]).stem for s in sources if s["split"] != "train"}
     # Also check every raw SSL image with a matching byte size. This bounds the
     # work for this multi-TB corpus while catching ordinary renamed copies.
-    heldout_sizes = {Path(s["image"]).stat().st_size for s in sources if s["split"] != "train"}
+    heldout_sizes = {
+        Path(s["image"]).stat().st_size for s in sources if s["split"] != "train"
+    }
     heldout_hashes = {s["image_hash"] for s in sources if s["split"] != "train"}
     excluded_sources = set(ssl.get("exclude_sources", [])) | heldout
     checked_candidates = 0
@@ -342,6 +401,7 @@ def reuse_ssl(cfg, sources, output):
             return set()
         with os.scandir(directory) as entries:
             return {entry.name for entry in entries if entry.is_file()}
+
     excluded = 0
     with atomic_index(index) as dst:
         with Path(ssl["index"]).open(encoding="utf-8") as old:
@@ -389,23 +449,44 @@ def reuse_ssl(cfg, sources, output):
         raise ValueError("No SSL training tiles remain")
     with atomic_index(output / "manifests" / "ssl_sources.jsonl") as f:
         for stem, count in sorted(counts.items()):
-            f.write(json.dumps({"source": stem, "raw_image": str(raw_sources[stem]),
-                                "split": "train", "tiles": count}) + "\n")
+            f.write(
+                json.dumps(
+                    {
+                        "source": stem,
+                        "raw_image": str(raw_sources[stem]),
+                        "split": "train",
+                        "tiles": count,
+                    }
+                )
+                + "\n"
+            )
     with atomic_index(output / "manifests" / "ssl_exclusions.jsonl") as f:
-        for reason, values in (("missing_raw_source", missing_sources),
-                               ("missing_tile_file", missing_tiles),
-                               ("heldout_or_explicit_exclusion", heldout_counts)):
+        for reason, values in (
+            ("missing_raw_source", missing_sources),
+            ("missing_tile_file", missing_tiles),
+            ("heldout_or_explicit_exclusion", heldout_counts),
+        ):
             for stem, count in sorted(values.items()):
-                f.write(json.dumps({"source": stem, "tiles": count, "reason": reason}) + "\n")
-    return {"tiles": sum(counts.values()), "sources": len(counts),
-            "excluded_tiles": excluded, "checked_hash_candidates": checked_candidates,
-            "missing_raw_sources": len(missing_sources),
-            "missing_raw_source_tiles": sum(missing_sources.values()),
-            "missing_tile_files": sum(missing_tiles.values()),
-            "all_tile_paths_verified_by_directory_listing": True,
-            "excluded_source_ids": sorted(set(raw_sources) & excluded_sources),
-            "duplicate_check": "source names and decoded hashes for matching raw byte sizes",
-            "all_ssl_content_hashed": False, "geographic_overlap_verified": False}
+                f.write(
+                    json.dumps({"source": stem, "tiles": count, "reason": reason})
+                    + "\n"
+                )
+    return {
+        "tiles": sum(counts.values()),
+        "sources": len(counts),
+        "excluded_tiles": excluded,
+        "checked_hash_candidates": checked_candidates,
+        "missing_raw_sources": len(missing_sources),
+        "missing_raw_source_tiles": sum(missing_sources.values()),
+        "missing_tile_files": sum(missing_tiles.values()),
+        "all_tile_paths_verified_by_directory_listing": True,
+        "excluded_source_ids": sorted(set(raw_sources) & excluded_sources),
+        "duplicate_check": (
+            "source names and decoded hashes for matching " "raw byte sizes"
+        ),
+        "all_ssl_content_hashed": False,
+        "geographic_overlap_verified": False,
+    }
 
 
 def prepare(cfg, plan_only=False):
@@ -413,7 +494,7 @@ def prepare(cfg, plan_only=False):
     tile, stride = int(cfg.get("tile", 512)), int(cfg.get("stride", 384))
     if not 0 < stride <= tile:
         raise ValueError("Require 0 < stride <= tile")
-    if not 0 <= cfg.get("skip_empty", .98) <= 1:
+    if not 0 <= cfg.get("skip_empty", 0.98) <= 1:
         raise ValueError("skip_empty must be between 0 and 1")
     if int(cfg.get("workers", 4)) < 1:
         raise ValueError("workers must be positive")
@@ -422,30 +503,48 @@ def prepare(cfg, plan_only=False):
             raw = Path(ds[key]).resolve()
             if output == raw or raw in output.parents or output in raw.parents:
                 raise ValueError("Output and raw input directories must be separate")
-    if output.exists() and any(output.iterdir()) and not (output / "manifests/plan.json").is_file():
+    if (
+        output.exists()
+        and any(output.iterdir())
+        and not (output / "manifests/plan.json").is_file()
+    ):
         # An interrupted first scan may leave only our empty scaffold.
         scaffold = {"manifests", "indices", ".prepare.lock"}
-        has_data = any(p.is_file() and p != output / ".prepare.lock"
-                       for p in output.rglob("*"))
+        has_data = any(
+            p.is_file() and p != output / ".prepare.lock" for p in output.rglob("*")
+        )
         if has_data or any(p.name not in scaffold for p in output.iterdir()):
-            raise ValueError("Refusing nonempty output without this pipeline's plan.json")
+            raise ValueError(
+                "Refusing nonempty output without this pipeline's plan.json"
+            )
     (output / "manifests").mkdir(parents=True, exist_ok=True)
     (output / "indices").mkdir(exist_ok=True)
     # The lock survives neither crashes nor a completed process; the kernel owns it.
     import fcntl
+
     with (output / ".prepare.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         plan_path = output / "manifests/plan.json"
         if plan_path.exists():
             plan = json.loads(plan_path.read_text())
             if plan["config"] != cfg:
-                raise ValueError("Config differs from frozen plan; use a new output directory")
+                raise ValueError(
+                    "Config differs from frozen plan; use a new output directory"
+                )
             sources = plan["sources"]
             validate_source_splits(sources)
         else:
-            sources = assign_splits(discover_sources(cfg), cfg.get("ratios", [.7, .15, .15]), cfg.get("seed", 42))
-            plan = {"schema_version": 1, "config": cfg, "sources": sources,
-                    "geographic_overlap_verified": False}
+            sources = assign_splits(
+                discover_sources(cfg),
+                cfg.get("ratios", [0.7, 0.15, 0.15]),
+                cfg.get("seed", 42),
+            )
+            plan = {
+                "schema_version": 1,
+                "config": cfg,
+                "sources": sources,
+                "geographic_overlap_verified": False,
+            }
             write_json(plan_path, plan)
         split_counts = Counter(s["split"] for s in sources)
         print("Frozen source splits:", dict(split_counts), flush=True)
@@ -453,9 +552,15 @@ def prepare(cfg, plan_only=False):
             return plan
         # A failed rerun must never leave a stale readiness marker behind.
         (output / "READY.json").unlink(missing_ok=True)
-        report = {"seg": {}, "source_and_group_overlap": 0,
-                  "decoded_image_overlap": 0, "geographic_overlap_verified": False}
-        tasks = [(s, str(output), tile, stride, cfg.get("skip_empty", .98)) for s in sources]
+        report = {
+            "seg": {},
+            "source_and_group_overlap": 0,
+            "decoded_image_overlap": 0,
+            "geographic_overlap_verified": False,
+        }
+        tasks = [
+            (s, str(output), tile, stride, cfg.get("skip_empty", 0.98)) for s in sources
+        ]
         results = []
         with ProcessPoolExecutor(max_workers=int(cfg.get("workers", 4))) as pool:
             for i, result in enumerate(pool.map(_tile_source, tasks), 1):
@@ -473,23 +578,40 @@ def prepare(cfg, plan_only=False):
                         pixels += result["class_pixels"]
                         for row in result["tiles"]:
                             index.write(f"{row['image']}\t{row['mask']}\n")
-                            metadata.write(json.dumps(dict(row, source_id=source["source_id"],
-                                dataset=source["dataset"], split=split, group=source["group"])) + "\n")
+                            metadata.write(
+                                json.dumps(
+                                    dict(
+                                        row,
+                                        source_id=source["source_id"],
+                                        dataset=source["dataset"],
+                                        split=split,
+                                        group=source["group"],
+                                    )
+                                )
+                                + "\n"
+                            )
                             count += 1
                 if not count:
                     raise ValueError(f"No usable segmentation tiles for {split}")
-                report["seg"][split] = {"sources": split_counts[split], "tiles": count,
-                                       "class_pixels": pixels.tolist()}
+                report["seg"][split] = {
+                    "sources": split_counts[split],
+                    "tiles": count,
+                    "class_pixels": pixels.tolist(),
+                }
         train_results = [r for s, r in zip(sources, results) if s["split"] == "train"]
         n_pixels = sum(r["intensity_pixels"] for r in train_results)
         mean = sum(r["intensity_sum"] for r in train_results) / n_pixels
-        variance = sum(r["intensity_sum_sq"] for r in train_results) / n_pixels - mean ** 2
-        report["train_normalization"] = {"mean": mean, "std": max(variance, 1e-12) ** .5,
-                                           "computed_from": "seg_train_only"}
+        variance = (
+            sum(r["intensity_sum_sq"] for r in train_results) / n_pixels - mean**2
+        )
+        report["train_normalization"] = {
+            "mean": mean,
+            "std": max(variance, 1e-12) ** 0.5,
+            "computed_from": "seg_train_only",
+        }
         report["ssl"] = reuse_ssl(cfg, sources, output)
         report["index_sha256"] = {
-            p.name: file_sha256(p)
-            for p in sorted((output / "indices").glob("*.tsv"))
+            p.name: file_sha256(p) for p in sorted((output / "indices").glob("*.tsv"))
         }
         write_json(output / "manifests/audit.json", report)
         write_dataset_readme(output, report)

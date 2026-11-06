@@ -23,8 +23,7 @@ import torch
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
-torch.backends.cudnn.benchmark = True
-torch.set_float32_matmul_precision("high")
+
 import yaml
 
 from samit.data.dataset import SARDataset
@@ -51,6 +50,8 @@ def parse_args():
 
 
 def main():
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision("high")
     args = parse_args()
     with open(args.config, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
@@ -63,14 +64,10 @@ def main():
 
     if distributed:
 
-        dist.init_process_group(
-            backend="nccl" if torch.cuda.is_available() else "gloo"
-        )
+        dist.init_process_group(backend="nccl" if torch.cuda.is_available() else "gloo")
 
-        local_rank = int(
-            os.environ["LOCAL_RANK"]
-        )
-        
+        local_rank = int(os.environ["LOCAL_RANK"])
+
         if torch.cuda.is_available():
             torch.cuda.set_device(local_rank)
 
@@ -85,9 +82,9 @@ def main():
         seed = base_seed
 
     set_seed(seed)
-    
+
     log = get_logger("samit.pretrain", log_file=ssl_cfg.get("log_file"))
-    
+
     if torch.cuda.is_available():
         if distributed:
             device = f"cuda:{local_rank}"
@@ -95,7 +92,7 @@ def main():
             device = "cuda"
     else:
         device = "cpu"
-        
+
     if not distributed or dist.get_rank() == 0:
         log.info(f"device = {device}")
 
@@ -106,7 +103,7 @@ def main():
         mean=common["mean"],
         std=common["std"],
     )
-    
+
     mask_generator = BlockwiseMaskGenerator(
         block_size=ssl_cfg["block_size"],
         mask_ratio=ssl_cfg["mask_ratio"],
@@ -120,7 +117,7 @@ def main():
         mask_generator=mask_generator,
         image_size=common["image_size"],
     )
-    
+
     if distributed:
         train_sampler = DistributedSampler(
             train_ds,
@@ -128,7 +125,7 @@ def main():
         )
     else:
         train_sampler = None
-    
+
     train_loader = build_dataloader(
         train_ds,
         batch_size=ssl_cfg["batch_size"],
@@ -136,19 +133,14 @@ def main():
         num_workers=common.get("num_workers", 4),
         sampler=train_sampler,
     )
-    
+
     world_size = dist.get_world_size() if distributed else 1
 
-    effective_batch = (
-        ssl_cfg["batch_size"]
-        * ssl_cfg["grad_accum"]
-        * world_size
-    )
+    effective_batch = ssl_cfg["batch_size"] * ssl_cfg["grad_accum"] * world_size
 
     if not distributed or dist.get_rank() == 0:
         log.info(
-            f"train: {len(train_ds)} samples, "
-            f"effective batch = {effective_batch}"
+            f"train: {len(train_ds)} samples, " f"effective batch = {effective_batch}"
         )
 
     # Модель
@@ -157,9 +149,9 @@ def main():
         num_classes=common["num_classes"],
         hog_dim=common["hog_dim"],
     )
-    
+
     model = model.to(device)
-    
+
     if distributed:
         model = DDP(
             model,
@@ -217,13 +209,28 @@ def main():
     )
     start = 0
     if args.resume:
-        start = ckpt.load(
-            path=args.resume, model=model, optimizer=optimizer,
-            scheduler=scheduler, scaler=trainer.scaler, map_location=device,
-        ) + 1
+        start = (
+            ckpt.load(
+                path=args.resume,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=trainer.scaler,
+                map_location=device,
+            )
+            + 1
+        )
         trainer.global_step = scheduler.step_count
-    previous = resume_history(Path(ssl_cfg.get("plot_dir", "results/ssl_viz")) / "history.json", start) if args.resume else None
-    history = trainer.fit(num_epochs=ssl_cfg["epochs"], start_epoch=start, history=previous)
+    previous = (
+        resume_history(
+            Path(ssl_cfg.get("plot_dir", "results/ssl_viz")) / "history.json", start
+        )
+        if args.resume
+        else None
+    )
+    history = trainer.fit(
+        num_epochs=ssl_cfg["epochs"], start_epoch=start, history=previous
+    )
 
     if not distributed or dist.get_rank() == 0:
         plot_dir = Path(ssl_cfg.get("plot_dir", "results/ssl_viz"))
@@ -246,7 +253,7 @@ def main():
     if distributed:
         dist.barrier()
         dist.destroy_process_group()
-        
+
     if is_main:
         log.info("Этап 1 (HOG-MIM) завершён.")
 

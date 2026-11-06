@@ -47,10 +47,13 @@ class Checkpointer:
         metric_value: Optional[float] = None,
     ) -> None:
         improved = metric_value is not None and (
-            metric_value > self.best_value if self.mode == "max"
+            metric_value > self.best_value
+            if self.mode == "max"
             else metric_value < self.best_value
         )
-        next_best = metric_value if improved else self.best_value
+        next_best = (
+            metric_value if improved and metric_value is not None else self.best_value
+        )
         model = model.module if hasattr(model, "module") else model
         state = {
             "epoch": epoch,
@@ -60,7 +63,7 @@ class Checkpointer:
             "scaler": scaler.state_dict() if scaler is not None else None,
             "best_value": next_best,
         }
-        
+
         epoch_name = f"epoch_{epoch:04d}.pt"
         path = os.path.join(self.directory, epoch_name)
         targets = [path]
@@ -71,7 +74,9 @@ class Checkpointer:
         try:
             # Complete every serialization before replacing any usable file.
             for target in targets:
-                fd, tmp = tempfile.mkstemp(prefix=".checkpoint-", suffix=".pt", dir=self.directory)
+                fd, tmp = tempfile.mkstemp(
+                    prefix=".checkpoint-", suffix=".pt", dir=self.directory
+                )
                 os.close(fd)
                 staged.append((tmp, target))
                 torch.save(state, tmp)
@@ -84,15 +89,14 @@ class Checkpointer:
             for tmp, _ in staged:
                 if os.path.exists(tmp):
                     os.remove(tmp)
-        
+
         # Удаляем старые чекпойнты, оставляем последние keep_last
         ckpts = self._list_checkpoints()
-        for old in ckpts[:-self.keep_last]:
+        for old in ckpts[: -self.keep_last]:
             try:
                 os.remove(old)
             except OSError:
                 pass
-
 
     def load(
         self,

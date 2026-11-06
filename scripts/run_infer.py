@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -30,7 +29,6 @@ from samit.data.transforms import SARTransform
 from samit.models.samit import SAMiT
 from samit.training.checkpoint import Checkpointer
 from samit.inference.predictor import Predictor
-from samit.inference.tiled import TiledInference
 from samit.inference.evaluator import Evaluator
 from samit.inference.export import export_segmentation
 from samit.inference.visualize import overlay_prediction
@@ -43,10 +41,18 @@ def parse_args():
     p.add_argument("--config", type=str, default="configs/default.yaml")
     p.add_argument("--checkpoint", type=str, required=True)
     p.add_argument("--output", type=str, default="results/infer")
-    p.add_argument("--tiled", action="store_true",
-                   help="Использовать TiledInference (для больших изображений)")
-    p.add_argument("--samples", type=int, nargs="*", default=[0, 1, 2, 3, 4],
-                   help="Индексы примеров для экспорта визуализаций")
+    p.add_argument(
+        "--tiled",
+        action="store_true",
+        help="Использовать TiledInference (для больших изображений)",
+    )
+    p.add_argument(
+        "--samples",
+        type=int,
+        nargs="*",
+        default=[0, 1, 2, 3, 4],
+        help="Индексы примеров для экспорта визуализаций",
+    )
     return p.parse_args()
 
 
@@ -68,7 +74,8 @@ def _load_palette(common: dict, num_classes: int, log) -> np.ndarray | None:
         return None
     if len(palette) != num_classes:
         log.warning(
-            f"длина палитры ({len(palette)}) не совпадает с num_classes ({num_classes}); "
+            f"длина палитры ({len(palette)}) не совпадает с "
+            f"num_classes ({num_classes}); "
             "экспорт продолжится, но палитру лучше привести в соответствие"
         )
     return palette
@@ -97,12 +104,16 @@ def main():
         hog_dim=common["hog_dim"],
     )
     Checkpointer(directory=seg_cfg["checkpoint_dir"]).load(
-        path=args.checkpoint, model=model, map_location=device,
+        path=args.checkpoint,
+        model=model,
+        map_location=device,
     )
 
     predictor = Predictor(
-        model=model, device=device,
-        mean=common["mean"], std=common["std"],
+        model=model,
+        device=device,
+        mean=common["mean"],
+        std=common["std"],
         use_amp=common.get("use_amp", True),
     )
 
@@ -111,8 +122,10 @@ def main():
         root=common["data_root"],
         index_file=seg_cfg["test_index"],
         transform=SARTransform(
-            image_size=common["image_size"], mode="eval",
-            mean=common["mean"], std=common["std"],
+            image_size=common["image_size"],
+            mode="eval",
+            mean=common["mean"],
+            std=common["std"],
         ),
         mode="seg",
         image_size=common["image_size"],
@@ -121,7 +134,8 @@ def main():
 
     # Метрики
     evaluator = Evaluator(
-        predictor=predictor, dataset=test_ds,
+        predictor=predictor,
+        dataset=test_ds,
         num_classes=common["num_classes"],
         ignore_index=common.get("ignore_index", -100),
         use_tiled=args.tiled,
@@ -130,9 +144,11 @@ def main():
     results = evaluator.run()
     with open(os.path.join(args.output, "metrics.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    log.info(f"metrics: mIoU={results['mean_iou']:.4f}  "
-             f"f1_w={results['f1_weighted']:.4f}  "
-             f"kappa={results['kappa']:.4f}")
+    log.info(
+        f"metrics: mIoU={results['mean_iou']:.4f}  "
+        f"f1_w={results['f1_weighted']:.4f}  "
+        f"kappa={results['kappa']:.4f}"
+    )
 
     # Контрольные предсказания
     mean_val = float(common["mean"])

@@ -22,8 +22,9 @@ def smoke_test_samit():
 
     # Режим самообучаемого предобучения
     hog_pred = model(x, mode="ssl")
-    assert hog_pred.shape[0] == 2 and hog_pred.shape[1] == 27, \
-        f"Неверная форма HOG-предсказания: {hog_pred.shape}"
+    assert (
+        hog_pred.shape[0] == 2 and hog_pred.shape[1] == 27
+    ), f"Неверная форма HOG-предсказания: {hog_pred.shape}"
 
     # Цель HOG
     hog_tgt = compute_hog_target(x, cell_size=16, num_bins=9)

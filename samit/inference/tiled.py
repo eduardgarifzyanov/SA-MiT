@@ -7,7 +7,9 @@ import torch
 class TiledInference:
     """The NumPy and normalized-tensor paths share one inference algorithm."""
 
-    def __init__(self, predictor, tile_size=512, stride=384, num_classes=7, use_hann=True):
+    def __init__(
+        self, predictor, tile_size=512, stride=384, num_classes=7, use_hann=True
+    ):
         if not 0 < stride <= tile_size or num_classes < 1:
             raise ValueError("Require 0 < stride <= tile_size and positive num_classes")
         self.predictor = predictor
@@ -61,15 +63,19 @@ class TiledInference:
         ys = self._reflection_indices(original_h, height, device)
         xs = self._reflection_indices(original_w, width, device)
         padded = x.index_select(0, ys).index_select(1, xs)
-        accum = torch.zeros((self.num_classes, height, width), dtype=torch.float32, device=device)
+        accum = torch.zeros(
+            (self.num_classes, height, width), dtype=torch.float32, device=device
+        )
         weight = torch.zeros((height, width), dtype=torch.float32, device=device)
         window = self._weight.to(device)
         for y, column in self._iter_tiles(height, width):
-            tile = padded[y:y + self.tile_size, column:column + self.tile_size]
+            tile = padded[y : y + self.tile_size, column : column + self.tile_size]
             _, probs = self.predictor.predict_tensor(tile, return_probs=True)
             if probs.shape[1] != self.num_classes:
                 raise ValueError("Model output channels do not match num_classes")
-            accum[:, y:y + self.tile_size, column:column + self.tile_size] += probs[0] * window
-            weight[y:y + self.tile_size, column:column + self.tile_size] += window
+            accum[:, y : y + self.tile_size, column : column + self.tile_size] += (
+                probs[0] * window
+            )
+            weight[y : y + self.tile_size, column : column + self.tile_size] += window
         prediction = (accum / weight.clamp_min(1e-6)[None]).argmax(dim=0)
         return prediction[:original_h, :original_w].cpu().numpy().astype(np.int64)

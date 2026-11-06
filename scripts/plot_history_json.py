@@ -27,19 +27,24 @@ from samit.training.plots import plot_training_curves, plot_dual_axis
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--history", type=str, required=True,
-                   help="JSON-файл с ключами train_loss, val_loss, mean_iou "
-                        "(списки одинаковой длины = число эпох; "
-                        "val_loss/mean_iou можно не указывать)")
+    p.add_argument(
+        "--history",
+        type=str,
+        required=True,
+        help="JSON-файл с ключами train_loss, val_loss, mean_iou "
+        "(списки одинаковой длины = число эпох; "
+        "val_loss/mean_iou можно не указывать)",
+    )
     p.add_argument("--plot-dir", type=str, required=True)
     p.add_argument("--loss-title", type=str, default="Training Loss")
     p.add_argument("--metric-title", type=str, default="Validation Metric")
     p.add_argument("--metric-key", type=str, default="mean_iou")
     p.add_argument("--metric-label", type=str, default="mIoU")
     p.add_argument(
-        "--dual-axis", action="store_true",
+        "--dual-axis",
+        action="store_true",
         help="Дополнительно построить один двухосный график loss+metric "
-             "(как буквально подписан рис. 4.7 диплома)",
+        "(как буквально подписан рис. 4.7 диплома)",
     )
     return p.parse_args()
 
@@ -50,7 +55,8 @@ def main():
         history = json.load(f)
 
     result = plot_training_curves(
-        history, args.plot_dir,
+        history,
+        args.plot_dir,
         loss_title=args.loss_title,
         metric_title=args.metric_title,
         metric_key=args.metric_key,
@@ -61,9 +67,11 @@ def main():
 
     if args.dual_axis:
         path = plot_dual_axis(
-            history, args.plot_dir,
+            history,
+            args.plot_dir,
             title=f"{args.loss_title} / {args.metric_label}",
-            metric_key=args.metric_key, metric_label=args.metric_label,
+            metric_key=args.metric_key,
+            metric_label=args.metric_label,
         )
         print(f"dual_axis_plot: {path}")
 

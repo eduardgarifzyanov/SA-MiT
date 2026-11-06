@@ -3,6 +3,7 @@ TiledInference.predict_tensor (для уже-нормализованного т
 
 Они должны давать ОДНУ И ТУ ЖЕ карту классов на одном и том же входе.
 """
+
 from __future__ import annotations
 
 import sys
@@ -14,12 +15,17 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from samit.inference.predictor import Predictor
-from samit.inference.tiled import TiledInference
+from samit.inference.predictor import (  # noqa: E402
+    Predictor,
+)
+from samit.inference.tiled import (  # noqa: E402
+    TiledInference,
+)
 
 
 class _DummyModel(torch.nn.Module):
     """Возвращает «логиты» как функцию от входа, чтобы тест был содержательным."""
+
     def __init__(self, num_classes=7):
         super().__init__()
         self.num_classes = num_classes
@@ -42,10 +48,10 @@ def main():
     mean, std = 0.42, 0.21
 
     model = _DummyModel(num_classes=4).eval()
-    predictor = Predictor(model=model, device="cpu",
-                          mean=mean, std=std, use_amp=False)
-    tiled = TiledInference(predictor=predictor, tile_size=512,
-                           stride=384, num_classes=4)
+    predictor = Predictor(model=model, device="cpu", mean=mean, std=std, use_amp=False)
+    tiled = TiledInference(
+        predictor=predictor, tile_size=512, stride=384, num_classes=4
+    )
 
     # Путь A: пользовательский — отдаём uint8
     pred_A = tiled.predict(raw_uint8)
@@ -60,7 +66,7 @@ def main():
     print(f"pred_C shape={pred_C.shape}, dtype={pred_C.dtype}")
     equal = np.array_equal(pred_A, pred_C)
     diff_count = int((pred_A != pred_C).sum())
-    print(f"\u0440\u0430\u0432\u043d\u044b: {equal}; \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u0438\u043a\u0441\u0435\u043b\u0435\u0439: {diff_count} / {pred_A.size}")
+    print(f"Равны: {equal}; расхождений пикселей: {diff_count} / {pred_A.size}")
 
     assert equal, "TiledInference.predict и .predict_tensor должны совпадать"
     print("test_tiled_tensor: OK")

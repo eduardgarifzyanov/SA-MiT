@@ -39,6 +39,7 @@ def test_one_step_seg_step_runs():
     """Проверяем, что шаг forward + backward + step проходит без ошибок
     и loss конечен."""
     from samit.training.losses import SegmentationLoss
+
     model = SAMiT(in_channels=1, num_classes=4, hog_dim=27)
     opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     loss_fn = SegmentationLoss(num_classes=4, lambda_ce=1.0, lambda_dice=0.5)
@@ -58,6 +59,7 @@ def test_one_step_ssl_step_runs():
     from samit.training.losses import HOGReconstructionLoss
     from samit.data.hog import compute_hog_target
     from samit.data.masking import BlockwiseMaskGenerator
+
     model = SAMiT(in_channels=1, num_classes=7, hog_dim=27)
     opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     loss_fn = HOGReconstructionLoss()
@@ -109,9 +111,7 @@ def test_training_checkpoint_roundtrip():
     ).to("cpu")
 
     optimizer = build_optimizer(model, lr=1e-3)
-    scheduler = build_scheduler(
-        optimizer, base_lr=1e-3, total_steps=10, warmup_steps=2
-    )
+    scheduler = build_scheduler(optimizer, base_lr=1e-3, total_steps=10, warmup_steps=2)
     loss_fn = SegmentationLoss(num_classes=NUM_CLASSES)
 
     images = torch.randn(2, 1, IMAGE_SIZE, IMAGE_SIZE)
@@ -127,16 +127,26 @@ def test_training_checkpoint_roundtrip():
         scheduler.step()
         losses.append(float(loss))
 
-    assert all(torch.isfinite(torch.tensor(l)).item() for l in losses), \
-        f"Потери содержат NaN/Inf: {losses}"
-    assert logits.shape == (2, NUM_CLASSES, IMAGE_SIZE, IMAGE_SIZE), \
-        f"Неверная форма logits: {logits.shape}"
+    assert all(
+        torch.isfinite(torch.tensor(value)).item() for value in losses
+    ), f"Потери содержат NaN/Inf: {losses}"
+    assert logits.shape == (
+        2,
+        NUM_CLASSES,
+        IMAGE_SIZE,
+        IMAGE_SIZE,
+    ), f"Неверная форма logits: {logits.shape}"
 
     # Round-trip через Checkpointer
     with tempfile.TemporaryDirectory() as tmpdir:
         ckpt = Checkpointer(tmpdir, keep_last=2, best_metric_name="miou", mode="max")
-        ckpt.save(epoch=1, model=model, optimizer=optimizer,
-                  scheduler=scheduler, metric_value=0.5)
+        ckpt.save(
+            epoch=1,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            metric_value=0.5,
+        )
         path = os.path.join(tmpdir, "epoch_0001.pt")
         assert os.path.exists(path), "Чекпойнт не сохранён"
         assert os.path.exists(os.path.join(tmpdir, "best.pt")), "best.pt не создан"
@@ -159,8 +169,9 @@ def test_training_checkpoint_roundtrip():
         assert epoch_loaded == 1, f"Эпоха не восстановлена: {epoch_loaded}"
 
         # Сверяем веса
-        for (n1, p1), (n2, p2) in zip(model.named_parameters(),
-                                       model2.named_parameters()):
+        for (n1, p1), (n2, p2) in zip(
+            model.named_parameters(), model2.named_parameters()
+        ):
             assert torch.allclose(p1, p2), f"Веса разошлись для {n1}"
 
     print(f"smoke_test_training: OK, losses={[round(x, 4) for x in losses]}")

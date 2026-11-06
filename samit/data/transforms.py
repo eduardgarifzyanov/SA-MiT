@@ -15,11 +15,17 @@
 выполняется только resize и нормировка.
 """
 
+from typing import Any
+
 import numpy as np
 
+_CV2_ERR: ImportError | None
+
 try:
-    import cv2
-except ImportError as _e:                                 # pragma: no cover
+    import cv2 as _cv2
+
+    cv2: Any = _cv2
+except ImportError as _e:  # pragma: no cover
     cv2 = None
     _CV2_ERR = _e
 else:
@@ -64,11 +70,17 @@ class SARTransform:
     def _resize(self, image, label):
         H, W = image.shape
         if H != self.image_size or W != self.image_size:
-            image = cv2.resize(image, (self.image_size, self.image_size),
-                               interpolation=cv2.INTER_LINEAR)
+            image = cv2.resize(
+                image,
+                (self.image_size, self.image_size),
+                interpolation=cv2.INTER_LINEAR,
+            )
             if label is not None:
-                label = cv2.resize(label, (self.image_size, self.image_size),
-                                   interpolation=cv2.INTER_NEAREST)
+                label = cv2.resize(
+                    label,
+                    (self.image_size, self.image_size),
+                    interpolation=cv2.INTER_NEAREST,
+                )
         return image, label
 
     def _random_flip(self, image, label):
@@ -106,8 +118,9 @@ class SARTransform:
     def _multiplicative_speckle(self, image):
         if self.gamma_noise_shape > 0:
             k = self.gamma_noise_shape
-            mult = np.random.gamma(shape=k, scale=1.0 / k,
-                                   size=image.shape).astype(np.float32)
+            mult = np.random.gamma(shape=k, scale=1.0 / k, size=image.shape).astype(
+                np.float32
+            )
             image = np.clip(image * mult, 0.0, 1.0)
         return image
 

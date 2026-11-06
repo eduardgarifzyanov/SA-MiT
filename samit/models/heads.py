@@ -32,9 +32,9 @@ class SegmentationHead(nn.Module):
         num_classes: int = 7,
     ) -> None:
         super().__init__()
-        self.lateral = nn.ModuleList([
-            nn.Conv2d(c, mid_channels, kernel_size=1) for c in in_channels
-        ])
+        self.lateral = nn.ModuleList(
+            [nn.Conv2d(c, mid_channels, kernel_size=1) for c in in_channels]
+        )
         self.fuse = nn.Sequential(
             nn.Conv2d(4 * mid_channels, mid_channels, kernel_size=3, padding=1),
             nn.BatchNorm2d(mid_channels),
@@ -50,16 +50,20 @@ class SegmentationHead(nn.Module):
             y = lat(feat)
             if y.shape[-2:] != (target_H, target_W):
                 y = F.interpolate(
-                    y, size=(target_H, target_W),
-                    mode="bilinear", align_corners=False,
+                    y,
+                    size=(target_H, target_W),
+                    mode="bilinear",
+                    align_corners=False,
                 )
             outs.append(y)
         x = torch.cat(outs, dim=1)
         x = self.fuse(x)
         x = self.classifier(x)
         x = F.interpolate(
-            x, size=output_size,
-            mode="bilinear", align_corners=False,
+            x,
+            size=output_size,
+            mode="bilinear",
+            align_corners=False,
         )
         return x
 

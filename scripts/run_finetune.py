@@ -45,8 +45,9 @@ from samit.training.history import resume_history
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--config", type=str, default="configs/default.yaml")
-    p.add_argument("--pretrained", type=str, default=None,
-                   help="Путь к SSL-чекпойнту (этап 1)")
+    p.add_argument(
+        "--pretrained", type=str, default=None, help="Путь к SSL-чекпойнту (этап 1)"
+    )
     p.add_argument("--resume", type=str, default=None)
     return p.parse_args()
 
@@ -56,8 +57,9 @@ def load_encoder_weights(model: SAMiT, ssl_ckpt_path: str, device: str):
     state = torch.load(ssl_ckpt_path, map_location=device, weights_only=True)
     sd = state["model"] if "model" in state else state
     sd = {k.removeprefix("module."): v for k, v in sd.items()}
-    enc_sd = {k.removeprefix("encoder."): v for k, v in sd.items()
-              if k.startswith("encoder.")}
+    enc_sd = {
+        k.removeprefix("encoder."): v for k, v in sd.items() if k.startswith("encoder.")
+    }
     return model.encoder.load_state_dict(enc_sd, strict=True)
 
 
@@ -68,12 +70,14 @@ def main():
     seg_cfg = cfg["stages"]["seg"]
     common = cfg["common"]
     if common.get("prepared_dataset", False):
-        validate_prepared_indices(common["data_root"], [
-            seg_cfg["train_index"], seg_cfg["val_index"], seg_cfg["test_index"]])
+        validate_prepared_indices(
+            common["data_root"],
+            [seg_cfg["train_index"], seg_cfg["val_index"], seg_cfg["test_index"]],
+        )
 
     set_seed(common.get("seed", 42))
     log = get_logger("samit.finetune", log_file=seg_cfg.get("log_file"))
-    
+
     distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
     local_rank = int(os.environ.get("LOCAL_RANK", "0"))
     if torch.cuda.is_available():
@@ -84,49 +88,58 @@ def main():
     if distributed:
         dist.init_process_group(backend="nccl" if device != "cpu" else "gloo")
     rank = dist.get_rank() if distributed else 0
-    
+
     if rank == 0:
         log.info(f"device = {device}")
 
     # Аугментации: train и eval
     transform_train = SARTransform(
-        image_size=common["image_size"], mode="train",
-        mean=common["mean"], std=common["std"],
+        image_size=common["image_size"],
+        mode="train",
+        mean=common["mean"],
+        std=common["std"],
     )
     transform_eval = SARTransform(
-        image_size=common["image_size"], mode="eval",
-        mean=common["mean"], std=common["std"],
+        image_size=common["image_size"],
+        mode="eval",
+        mean=common["mean"],
+        std=common["std"],
     )
 
     train_ds = SARDataset(
-        root=common["data_root"], index_file=seg_cfg["train_index"],
-        transform=transform_train, mode="seg",
+        root=common["data_root"],
+        index_file=seg_cfg["train_index"],
+        transform=transform_train,
+        mode="seg",
         image_size=common["image_size"],
     )
     val_ds = SARDataset(
-        root=common["data_root"], index_file=seg_cfg["val_index"],
-        transform=transform_eval, mode="seg",
+        root=common["data_root"],
+        index_file=seg_cfg["val_index"],
+        transform=transform_eval,
+        mode="seg",
         image_size=common["image_size"],
     )
-    
+
     train_sampler = DistributedSampler(train_ds, shuffle=True) if distributed else None
 
     val_sampler = (
         DistributedEvalSampler(val_ds, rank, dist.get_world_size())
-        if distributed else None
+        if distributed
+        else None
     )
-    
+
     train_loader = build_dataloader(
-        train_ds, 
-        batch_size=seg_cfg["batch_size"], 
+        train_ds,
+        batch_size=seg_cfg["batch_size"],
         is_train=True,
         num_workers=common.get("num_workers", 4),
         sampler=train_sampler,
     )
     val_loader = build_dataloader(
-        val_ds, 
+        val_ds,
         batch_size=seg_cfg.get("val_batch_size", seg_cfg["batch_size"]),
-        is_train=False, 
+        is_train=False,
         num_workers=common.get("num_workers", 4),
         sampler=val_sampler,
     )
@@ -139,13 +152,15 @@ def main():
         num_classes=common["num_classes"],
         hog_dim=common["hog_dim"],
     )
-    
+
     model = model.to(device)
-    
+
     if args.pretrained:
         miss, unexp = load_encoder_weights(model, args.pretrained, device)
         if rank == 0:
-            log.info(f"loaded encoder weights: missing={len(miss)}, unexpected={len(unexp)}")
+            log.info(
+                f"loaded encoder weights: missing={len(miss)}, unexpected={len(unexp)}"
+            )
 
     if distributed:
         model = DDP(
@@ -155,14 +170,19 @@ def main():
         )
 
     optimizer = build_optimizer(
-        model, lr=seg_cfg["lr"], weight_decay=seg_cfg["weight_decay"],
+        model,
+        lr=seg_cfg["lr"],
+        weight_decay=seg_cfg["weight_decay"],
         betas=tuple(seg_cfg.get("betas", (0.9, 0.999))),
     )
     steps_per_epoch = max(1, math.ceil(len(train_loader) / seg_cfg["grad_accum"]))
     total_steps = steps_per_epoch * seg_cfg["epochs"]
     scheduler = WarmupCosineScheduler(
-        optimizer, warmup_steps=seg_cfg["warmup_steps"],
-        total_steps=total_steps, base_lr=seg_cfg["lr"], min_lr=seg_cfg["min_lr"],
+        optimizer,
+        warmup_steps=seg_cfg["warmup_steps"],
+        total_steps=total_steps,
+        base_lr=seg_cfg["lr"],
+        min_lr=seg_cfg["min_lr"],
     )
 
     ckpt = Checkpointer(
@@ -182,15 +202,15 @@ def main():
     )
 
     trainer = TwoStageTrainer(
-        model=model, 
-        optimizer=optimizer, 
+        model=model,
+        optimizer=optimizer,
         scheduler=scheduler,
         loss_fn=loss_fn,
-        train_loader=train_loader, 
+        train_loader=train_loader,
         val_loader=val_loader,
-        checkpointer=ckpt, 
+        checkpointer=ckpt,
         metrics=metrics,
-        stage="seg", 
+        stage="seg",
         device=device,
         distributed=distributed,
         local_rank=local_rank,
@@ -202,22 +222,31 @@ def main():
     )
     start = 0
     if args.resume:
-        start = ckpt.load(
-            path=args.resume, model=model, optimizer=optimizer,
-            scheduler=scheduler, scaler=trainer.scaler, map_location=device,
-        ) + 1
+        start = (
+            ckpt.load(
+                path=args.resume,
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                scaler=trainer.scaler,
+                map_location=device,
+            )
+            + 1
+        )
         trainer.global_step = scheduler.step_count
     history = trainer.fit(
         num_epochs=seg_cfg["epochs"],
         start_epoch=start,
-        history=resume_history(Path(seg_cfg["plot_dir"]) / "history.json", start) if args.resume else None,
+        history=(
+            resume_history(Path(seg_cfg["plot_dir"]) / "history.json", start)
+            if args.resume
+            else None
+        ),
     )
-    
+
     if rank == 0:
 
-        plot_dir = Path(
-            seg_cfg["plot_dir"]
-        )
+        plot_dir = Path(seg_cfg["plot_dir"])
 
         plot_dir.mkdir(
             parents=True,
@@ -236,20 +265,14 @@ def main():
             metric_label="mIoU",
         )
 
-        log.info(
-            f"Loss curve saved to "
-            f"{result['loss_plot']}"
-        )
+        log.info(f"Loss curve saved to " f"{result['loss_plot']}")
 
         if result["metric_plot"] is not None:
-            log.info(
-                f"mIoU curve saved to "
-                f"{result['metric_plot']}"
-            )
-        
+            log.info(f"mIoU curve saved to " f"{result['metric_plot']}")
+
     if rank == 0:
         log.info("Этап 2 (сегментация) завершён.")
-        
+
     if distributed:
         dist.destroy_process_group()
 

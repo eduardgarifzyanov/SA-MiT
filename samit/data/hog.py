@@ -42,15 +42,15 @@ def compute_hog_target(
     B, _, H, W = images.shape
 
     # Операторы Собеля
-    sobel_x = torch.tensor([[-1., 0., 1.],
-                            [-2., 0., 2.],
-                            [-1., 0., 1.]], device=images.device).view(1, 1, 3, 3)
+    sobel_x = torch.tensor(
+        [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=images.device
+    ).view(1, 1, 3, 3)
     sobel_y = sobel_x.transpose(-1, -2)
 
     gx = F.conv2d(images, sobel_x, padding=1)
     gy = F.conv2d(images, sobel_y, padding=1)
     magnitude = torch.sqrt(gx * gx + gy * gy + 1e-12)
-    angle = torch.atan2(gy, gx) % math.pi               # [0, π)
+    angle = torch.atan2(gy, gx) % math.pi  # [0, π)
 
     bin_width = math.pi / num_bins
     bin_idx = (angle / bin_width).long().clamp(max=num_bins - 1)
@@ -61,12 +61,11 @@ def compute_hog_target(
         mask = (bin_idx == b).float() * magnitude
         pooled = F.avg_pool2d(mask, kernel_size=cell_size, stride=cell_size)
         hist_list.append(pooled)
-    hist = torch.cat(hist_list, dim=1)                  # (B, num_bins, h, w)
+    hist = torch.cat(hist_list, dim=1)  # (B, num_bins, h, w)
 
     # Дополнительные каналы — нормированная магнитуда и средний угол
     mag_pool = F.avg_pool2d(magnitude, kernel_size=cell_size, stride=cell_size)
-    ang_pool = F.avg_pool2d(angle * magnitude,
-                            kernel_size=cell_size, stride=cell_size)
+    ang_pool = F.avg_pool2d(angle * magnitude, kernel_size=cell_size, stride=cell_size)
     ang_pool = ang_pool / (mag_pool + 1e-6)
 
     # L1-нормировка гистограммы по бинам
@@ -74,8 +73,7 @@ def compute_hog_target(
     hist_normed = hist / norm
 
     out = torch.cat(
-        [hist, hist_normed,
-         ang_pool.expand(-1, num_bins, -1, -1)],
+        [hist, hist_normed, ang_pool.expand(-1, num_bins, -1, -1)],
         dim=1,
     )
     return out

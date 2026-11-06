@@ -143,11 +143,7 @@ def main():
     torch.manual_seed(common.get("seed", 42))
     np.random.seed(common.get("seed", 42))
 
-    device = (
-        "cuda"
-        if torch.cuda.is_available()
-        else "cpu"
-    )
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     print(f"Device: {device}")
 
@@ -176,20 +172,14 @@ def main():
 
     if not 0 <= args.index < len(dataset):
         raise IndexError(
-            f"Index {args.index} out of range. "
-            f"Dataset size = {len(dataset)}"
+            f"Index {args.index} out of range. " f"Dataset size = {len(dataset)}"
         )
 
     sample = dataset[args.index]
 
     image = sample["image"].unsqueeze(0).to(device)
 
-    mask = (
-        sample["mim_mask"]
-        .unsqueeze(0)
-        .float()
-        .to(device)
-    )
+    mask = sample["mim_mask"].unsqueeze(0).float().to(device)
 
     model = load_model(cfg, device)
     model = load_checkpoint(

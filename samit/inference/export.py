@@ -21,17 +21,19 @@ from typing import Optional, Dict, Any
 import numpy as np
 from PIL import Image
 
-
 # Палитра классов (RGB, 7 значений: фон + 6 семантических).
-CLASS_COLORS = np.array([
-    [  0,   0,   0],  # 0 — фон / неизвестно
-    [ 64, 128,  64],  # 1
-    [ 70,  70, 200],  # 2
-    [200, 130,   0],  # 3
-    [128,  64, 128],  # 4
-    [220, 220, 220],  # 5
-    [255, 220,   0],  # 6
-], dtype=np.uint8)
+CLASS_COLORS = np.array(
+    [
+        [0, 0, 0],  # 0 — фон / неизвестно
+        [64, 128, 64],  # 1
+        [70, 70, 200],  # 2
+        [200, 130, 0],  # 3
+        [128, 64, 128],  # 4
+        [220, 220, 220],  # 5
+        [255, 220, 0],  # 6
+    ],
+    dtype=np.uint8,
+)
 
 
 def export_segmentation(
@@ -63,8 +65,10 @@ def export_segmentation(
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    palette = CLASS_COLORS if class_colors is None else np.asarray(
-        class_colors, dtype=np.uint8
+    palette = (
+        CLASS_COLORS
+        if class_colors is None
+        else np.asarray(class_colors, dtype=np.uint8)
     )
 
     if save_indices:
@@ -73,14 +77,13 @@ def export_segmentation(
         )
     if save_color:
         color = palette[pred.clip(0, len(palette) - 1)]
-        Image.fromarray(color).save(
-            os.path.join(output_dir, f"{base_name}_color.png")
-        )
+        Image.fromarray(color).save(os.path.join(output_dir, f"{base_name}_color.png"))
 
     if geo_metadata is not None:
         try:
             import rasterio
             from rasterio.transform import Affine
+
             with rasterio.open(
                 os.path.join(output_dir, f"{base_name}.tif"),
                 "w",

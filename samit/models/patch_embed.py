@@ -27,12 +27,14 @@ import torch.nn as nn
 class OverlapPatchEmbed(nn.Module):
     """Свёрточный patch-embedding с перекрытием (раздел 3.3, формула 3.5)."""
 
-    def __init__(self, in_channels: int, embed_dim: int,
-                 patch_size: int, stride: int) -> None:
+    def __init__(
+        self, in_channels: int, embed_dim: int, patch_size: int, stride: int
+    ) -> None:
         super().__init__()
         padding = (patch_size - stride + 1) // 2
         self.proj = nn.Conv2d(
-            in_channels, embed_dim,
+            in_channels,
+            embed_dim,
             kernel_size=patch_size,
             stride=stride,
             padding=padding,
@@ -45,8 +47,8 @@ class OverlapPatchEmbed(nn.Module):
         tokens : (B, L, D) — токены патчей,
         (H', W') — пространственные размеры после свёртки.
         """
-        x = self.proj(x)                       # (B, D, H', W')
+        x = self.proj(x)  # (B, D, H', W')
         B, D, H, W = x.shape
-        x = x.flatten(2).transpose(1, 2)       # (B, L, D)
+        x = x.flatten(2).transpose(1, 2)  # (B, L, D)
         x = self.norm(x)
         return x, (H, W)

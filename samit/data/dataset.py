@@ -10,15 +10,20 @@
 """
 
 import os
-from typing import Optional
+
+from typing import Any
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+_PIL_ERR: ImportError | None
+
 try:
-    from PIL import Image
-except ImportError as _e:                                 # pragma: no cover
+    from PIL import Image as _Image
+
+    Image: Any = _Image
+except ImportError as _e:  # pragma: no cover
     Image = None
     _PIL_ERR = _e
 else:
@@ -54,13 +59,10 @@ class SARDataset(Dataset):
         image_size: int = 512,
     ) -> None:
         if Image is None:
-            raise ImportError(
-                "Pillow не установлен: pip install pillow"
-            ) from _PIL_ERR
+            raise ImportError("Pillow не установлен: pip install pillow") from _PIL_ERR
         assert mode in ("seg", "ssl"), f"Неизвестный mode={mode}"
         if mode == "ssl":
-            assert mask_generator is not None, \
-                "Для mode='ssl' требуется mask_generator"
+            assert mask_generator is not None, "Для mode='ssl' требуется mask_generator"
         self.root = root
         self.transform = transform
         self.mode = mode
@@ -68,8 +70,7 @@ class SARDataset(Dataset):
         self.image_size = image_size
 
         with open(index_file, "r", encoding="utf-8") as f:
-            self.items = [line.rstrip("\n").split("\t")
-                          for line in f if line.strip()]
+            self.items = [line.rstrip("\n").split("\t") for line in f if line.strip()]
 
     def __len__(self) -> int:
         return len(self.items)

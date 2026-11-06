@@ -37,27 +37,27 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 FUSAR_COLOR_MAP = {
-    (0, 0, 255): 0,      # water
-    (255, 255, 0): 1,    # road
-    (255, 0, 0): 2,      # building
-    (0, 255, 0): 3,      # vegetation
-    (0, 0, 0): 255       # ignore
+    (0, 0, 255): 0,  # water
+    (255, 255, 0): 1,  # road
+    (255, 0, 0): 2,  # building
+    (0, 255, 0): 3,  # vegetation
+    (0, 0, 0): 255,  # ignore
 }
 
 DS1_TO_COMMON = {
     1: 255,  # Bareland -> ignore
-    2: 3,    # Grass -> Vegetation
+    2: 3,  # Grass -> Vegetation
     3: 255,  # Pavement -> ignore
-    4: 1,    # Road -> Road
-    5: 3,    # Tree -> Vegetation
-    6: 0,    # Water -> Water
-    7: 3,    # Cropland -> Vegetation
-    8: 2,    # Building -> Building
+    4: 1,  # Road -> Road
+    5: 3,  # Tree -> Vegetation
+    6: 0,  # Water -> Water
+    7: 3,  # Cropland -> Vegetation
+    8: 2,  # Building -> Building
 }
 
 try:
     from PIL import Image
-except ImportError as _e:                                 # pragma: no cover
+except ImportError as _e:  # pragma: no cover
     raise ImportError("Pillow не установлен: pip install pillow") from _e
 
 
@@ -90,6 +90,7 @@ def load_grayscale(path: Path) -> np.ndarray:
     if path.suffix.lower() in (".tif", ".tiff"):
         try:
             import tifffile
+
             arr = tifffile.imread(str(path))
         except ImportError:
             arr = np.asarray(Image.open(path))
@@ -190,12 +191,11 @@ def tile_one(
     out = []
     for y in ys:
         for x in xs:
-            tile_img = image[y:y + tile_size, x:x + tile_size]
+            tile_img = image[y : y + tile_size, x : x + tile_size]
             if skip_empty > 0 and is_mostly_empty(tile_img, skip_empty):
                 continue
             tile_mask = (
-                mask[y:y + tile_size, x:x + tile_size]
-                if mask is not None else None
+                mask[y : y + tile_size, x : x + tile_size] if mask is not None else None
             )
             out.append((tile_img, tile_mask, y, x))
     return out
@@ -263,20 +263,44 @@ def process_directory(
 
 def legacy_main():
     ap = argparse.ArgumentParser(description="Нарезка SAR-изображений на тайлы")
-    ap.add_argument("--src-ssl", type=str, default=None,
-                    help="Каталог с SAR-изображениями для этапа 1 (без масок)")
-    ap.add_argument("--src-seg-images", type=str, default=None,
-                    help="Каталог с SAR для этапа 2 (есть маски)")
-    ap.add_argument("--src-seg-masks", type=str, default=None,
-                    help="Каталог с масками классов для этапа 2")
-    ap.add_argument("--dst", type=str, required=True,
-                    help="Каталог-приёмник (создаст images/, masks/, *.tsv)")
+    ap.add_argument(
+        "--src-ssl",
+        type=str,
+        default=None,
+        help="Каталог с SAR-изображениями для этапа 1 (без масок)",
+    )
+    ap.add_argument(
+        "--src-seg-images",
+        type=str,
+        default=None,
+        help="Каталог с SAR для этапа 2 (есть маски)",
+    )
+    ap.add_argument(
+        "--src-seg-masks",
+        type=str,
+        default=None,
+        help="Каталог с масками классов для этапа 2",
+    )
+    ap.add_argument(
+        "--dst",
+        type=str,
+        required=True,
+        help="Каталог-приёмник (создаст images/, masks/, *.tsv)",
+    )
     ap.add_argument("--tile", type=int, default=512)
     ap.add_argument("--stride", type=int, default=384)
-    ap.add_argument("--skip-empty", type=float, default=0.98,
-                    help="Доля чёрных пикселей, при которой тайл отбрасывается")
-    ap.add_argument("--mask-format", choices=["auto", "common", "ds1", "rgb"],
-                    default="auto", help="Схема меток; common сохраняет 0..3/255")
+    ap.add_argument(
+        "--skip-empty",
+        type=float,
+        default=0.98,
+        help="Доля чёрных пикселей, при которой тайл отбрасывается",
+    )
+    ap.add_argument(
+        "--mask-format",
+        choices=["auto", "common", "ds1", "rgb"],
+        default="auto",
+        help="Схема меток; common сохраняет 0..3/255",
+    )
     args = ap.parse_args()
 
     dst = Path(args.dst)
@@ -312,6 +336,7 @@ def legacy_main():
 def main():
     # The CLI always splits sources before generating tiles.
     from .prepare import main as prepare_main
+
     prepare_main()
 
 

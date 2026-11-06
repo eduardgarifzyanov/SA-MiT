@@ -33,7 +33,9 @@ class Predictor:
                 elif not np.issubdtype(image.dtype, np.floating):
                     raise ValueError("Expected uint8 or floating-point image in [0, 1]")
                 if not np.isfinite(arr).all() or arr.min() < 0 or arr.max() > 1:
-                    raise ValueError("Floating-point images must be finite and in [0, 1]")
+                    raise ValueError(
+                        "Floating-point images must be finite and in [0, 1]"
+                    )
                 arr = (arr - self.mean) / self.std
                 return torch.from_numpy(arr).unsqueeze(0).unsqueeze(0)
             raise ValueError("Ожидается одноканальное 2D-изображение")
@@ -47,7 +49,8 @@ class Predictor:
         """
         x = self._to_tensor(image).to(self.device, non_blocking=True)
         with torch.amp.autocast(
-            device_type="cuda", enabled=self.use_amp and "cuda" in str(self.device),
+            device_type="cuda",
+            enabled=self.use_amp and "cuda" in str(self.device),
         ):
             logits = self.model(x, mode="seg")
         probs = F.softmax(logits.float(), dim=1)
@@ -75,7 +78,8 @@ class Predictor:
             raise ValueError(f"ожидается 2D/3D/4D тензор, получено dim={x.dim()}")
         x = x.to(self.device, non_blocking=True)
         with torch.amp.autocast(
-            device_type="cuda", enabled=self.use_amp and "cuda" in str(self.device),
+            device_type="cuda",
+            enabled=self.use_amp and "cuda" in str(self.device),
         ):
             logits = self.model(x, mode="seg")
         probs = F.softmax(logits.float(), dim=1)

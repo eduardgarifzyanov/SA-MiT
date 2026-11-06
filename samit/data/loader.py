@@ -78,11 +78,7 @@ def build_dataloader(
 
     # Обычный single-GPU режим
 
-    sampler = (
-        RandomSampler(dataset)
-        if is_train
-        else SequentialSampler(dataset)
-    )
+    sampler = RandomSampler(dataset) if is_train else SequentialSampler(dataset)
 
     return DataLoader(
         dataset,
@@ -92,6 +88,6 @@ def build_dataloader(
         pin_memory=pin_memory,
         drop_last=is_train,
         collate_fn=_collate_fn,
-        **({"persistent_workers": True, "prefetch_factor": 4}
-           if num_workers > 0 else {}),
+        persistent_workers=num_workers > 0,
+        prefetch_factor=4 if num_workers > 0 else None,
     )

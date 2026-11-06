@@ -36,19 +36,19 @@ class SegmentationLoss(nn.Module):
         if class_weights is not None:
             weight = torch.as_tensor(class_weights, dtype=torch.float32)
         self.ce = nn.CrossEntropyLoss(
-            weight=weight, ignore_index=ignore_index,
+            weight=weight,
+            ignore_index=ignore_index,
         )
 
     def _dice(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         probs = F.softmax(logits, dim=1)
-        valid = (target != self.ignore_index)
+        valid = target != self.ignore_index
         target_clamped = target.clone()
         target_clamped[target == self.ignore_index] = 0
 
-        one_hot = F.one_hot(
-            target_clamped,
-            self.num_classes
-        ).permute(0, 3, 1, 2).float()
+        one_hot = (
+            F.one_hot(target_clamped, self.num_classes).permute(0, 3, 1, 2).float()
+        )
         valid_mask = valid.unsqueeze(1).float()
         probs = probs * valid_mask
         one_hot = one_hot * valid_mask
@@ -89,18 +89,24 @@ class HOGReconstructionLoss(nn.Module):
         # подгоняем pred к target билинейной интерполяцией.
         if pred.shape[-2:] != target.shape[-2:]:
             pred = F.interpolate(
-                pred, size=target.shape[-2:],
-                mode="bilinear", align_corners=False,
+                pred,
+                size=target.shape[-2:],
+                mode="bilinear",
+                align_corners=False,
             )
         # Аналогично mask
         if mask.shape[-2:] != target.shape[-2:]:
-            mask = F.interpolate(
-                mask.float().unsqueeze(1),
-                size=target.shape[-2:],
-                mode="nearest",
-            ).squeeze(1).bool()
+            mask = (
+                F.interpolate(
+                    mask.float().unsqueeze(1),
+                    size=target.shape[-2:],
+                    mode="nearest",
+                )
+                .squeeze(1)
+                .bool()
+            )
 
-        diff = (pred - target).pow(2).mean(dim=1)        # (B, h, w)
+        diff = (pred - target).pow(2).mean(dim=1)  # (B, h, w)
         mask_f = mask.float()
         num = (diff * mask_f).sum()
         denom = mask_f.sum().clamp_min(1.0)

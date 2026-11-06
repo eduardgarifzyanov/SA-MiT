@@ -38,19 +38,23 @@ class SwiGLUFFN(nn.Module):
         self.fc1 = nn.Linear(dim, 2 * hidden, bias=True)
         # Пространственное смешивание через DWConv 3×3
         self.dwconv = nn.Conv2d(
-            hidden, hidden,
-            kernel_size=3, padding=1, groups=hidden, bias=True,
+            hidden,
+            hidden,
+            kernel_size=3,
+            padding=1,
+            groups=hidden,
+            bias=True,
         )
         self.fc2 = nn.Linear(hidden, dim, bias=True)
         self.act = nn.SiLU()
 
     def forward(self, x: torch.Tensor, H: int, W: int) -> torch.Tensor:
         B, L, D = x.shape
-        gate_value = self.fc1(x)                       # (B, L, 2H)
+        gate_value = self.fc1(x)  # (B, L, 2H)
         gate, value = gate_value.chunk(2, dim=-1)
         value = value.transpose(1, 2).reshape(B, -1, H, W)
         value = self.dwconv(value)
-        value = value.flatten(2).transpose(1, 2)       # (B, L, H)
+        value = value.flatten(2).transpose(1, 2)  # (B, L, H)
         x = self.act(gate) * value
         x = self.fc2(x)
         return x

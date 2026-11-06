@@ -35,7 +35,8 @@ def build_optimizer(
     """Создаёт AdamW с двумя группами параметров."""
     return torch.optim.AdamW(
         _group_parameters(model, weight_decay),
-        lr=lr, betas=betas,
+        lr=lr,
+        betas=betas,
     )
 
 
@@ -56,7 +57,12 @@ class WarmupCosineScheduler:
         self.warmup_steps = warmup_steps
         self.min_lr = min_lr
         self.step_count = 0
-        if total_steps < 1 or warmup_steps < 0 or base_lr <= 0 or not 0 <= min_lr <= base_lr:
+        if (
+            total_steps < 1
+            or warmup_steps < 0
+            or base_lr <= 0
+            or not 0 <= min_lr <= base_lr
+        ):
             raise ValueError("Invalid learning-rate schedule")
         self._set_lr(self._lr_for_update(1))
 
@@ -64,11 +70,16 @@ class WarmupCosineScheduler:
         if self.warmup_steps and update <= self.warmup_steps:
             lr = self.base_lr * update / self.warmup_steps
         else:
-            progress = ((update - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
-                        if self.warmup_steps else (update - 1) / max(1, self.total_steps - 1))
+            progress = (
+                (update - self.warmup_steps)
+                / max(1, self.total_steps - self.warmup_steps)
+                if self.warmup_steps
+                else (update - 1) / max(1, self.total_steps - 1)
+            )
             progress = max(0.0, min(1.0, progress))
-            lr = self.min_lr + 0.5 * (self.base_lr - self.min_lr) * \
-                (1.0 + math.cos(math.pi * progress))
+            lr = self.min_lr + 0.5 * (self.base_lr - self.min_lr) * (
+                1.0 + math.cos(math.pi * progress)
+            )
         return lr
 
     def _set_lr(self, lr):
@@ -98,5 +109,9 @@ def build_scheduler(
     min_lr: float = 1e-6,
 ) -> WarmupCosineScheduler:
     return WarmupCosineScheduler(
-        optimizer, base_lr, total_steps, warmup_steps, min_lr,
+        optimizer,
+        base_lr,
+        total_steps,
+        warmup_steps,
+        min_lr,
     )

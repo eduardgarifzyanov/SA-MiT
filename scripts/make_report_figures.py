@@ -8,7 +8,7 @@ scripts/make_report_figures.py — графика и таблицы для ра�
   * столбчатая диаграмма поклассовых IoU/F1 (дополняет табл. 4.19);
   * табл. 4.19 (поклассовые IoU/F1 + доля пикселей класса в ТЕСТОВОЙ
     подвыборке) и табл. 4.18 (итоговые агрегированные метрики SA-MiT)
-    
+
 Пример запуска:
     python scripts/make_report_figures.py \
         --metrics results/test/metrics.json \
@@ -23,10 +23,12 @@ import os
 
 import numpy as np
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.colors import (  # noqa: E402
+    LogNorm,
+)
 
 # Соответствует разметке проекта: 0 — вода,
 # 1 — дороги, 2 — строения, 3 — растительность. Меняется флагом
@@ -43,14 +45,26 @@ DEFAULT_CLASS_COLORS = {
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--metrics", type=str, required=True,
-                   help="Путь к metrics.json (результат run_infer.py)")
-    p.add_argument("--class-names", type=str, nargs="*",
-                   default=None,
-                   help="Названия классов по порядку индексов 0..K-1 "
-                        f"(по умолчанию {DEFAULT_CLASS_NAMES})")
-    p.add_argument("--output", type=str, default=None,
-                   help="Каталог для сохранения (по умолчанию — рядом с metrics.json)")
+    p.add_argument(
+        "--metrics",
+        type=str,
+        required=True,
+        help="Путь к metrics.json (результат run_infer.py)",
+    )
+    p.add_argument(
+        "--class-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Названия классов по порядку индексов 0..K-1 "
+        f"(по умолчанию {DEFAULT_CLASS_NAMES})",
+    )
+    p.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Каталог для сохранения (по умолчанию — рядом с metrics.json)",
+    )
     return p.parse_args()
 
 
@@ -101,7 +115,6 @@ def plot_confusion_matrix(
     ax.set_ylabel("Истинный класс")
     ax.set_title(title)
 
-    row_max = normalize_rows(cm).max() if normalized else None
     for i in range(n):
         for j in range(n):
             if normalized:
@@ -111,9 +124,8 @@ def plot_confusion_matrix(
             else:
                 value = cm[i, j]
                 text = f"{int(value):,}".replace(",", " ")
-                color = "white" if value > (vmax ** 0.5) else "black"
-            ax.text(j, i, text, ha="center", va="center",
-                     color=color, fontsize=9)
+                color = "white" if value > (vmax**0.5) else "black"
+            ax.text(j, i, text, ha="center", va="center", color=color, fontsize=9)
 
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     fig.tight_layout()
@@ -161,22 +173,31 @@ def write_tables_markdown(
     lines = []
     lines.append("## Таблица 4.18 — Итоговые метрики SA-MiT на тестовой подвыборке")
     lines.append("")
-    lines.append("(Сравнение с базовыми методами убрано из эксперимента — "
-                  "столбцы других архитектур не заполняются.)")
+    lines.append(
+        "(Сравнение с базовыми методами убрано из эксперимента — "
+        "столбцы других архитектур не заполняются.)"
+    )
     lines.append("")
     lines.append("| Метод | pixel_acc. | mIoU | F1_macro | F1_weighted | kappa |")
     lines.append("| --- | --- | --- | --- | --- | --- |")
     lines.append(
         "| **SA-MiT** | {:.4f} | {:.4f} | {:.4f} | {:.4f} | {:.4f} |".format(
-            metrics["pixel_accuracy"], metrics["mean_iou"],
-            metrics["f1_macro"], metrics["f1_weighted"], metrics["kappa"],
+            metrics["pixel_accuracy"],
+            metrics["mean_iou"],
+            metrics["f1_macro"],
+            metrics["f1_weighted"],
+            metrics["kappa"],
         )
     )
     lines.append("")
-    lines.append("## Таблица 4.19 — Поклассовые значения IoU и F1 (SA-MiT, тестовая подвыборка)")
+    lines.append(
+        "## Таблица 4.19 — Поклассовые значения IoU и F1 (SA-MiT, тестовая подвыборка)"
+    )
     lines.append("")
-    lines.append("Доля пикселей — по тестовой подвыборке (из confusion_matrix), "
-                  "НЕ по обучающей (для табл. 4.14 нужен отдельный проход по train_index).")
+    lines.append(
+        "Доля пикселей — по тестовой подвыборке (из confusion_matrix), "
+        "НЕ по обучающей (для табл. 4.14 нужен отдельный проход по train_index)."
+    )
     lines.append("")
     lines.append("| Индекс | Класс | Доля пикселей в тесте, % | IoU | F1 |")
     lines.append("| --- | --- | --- | --- | --- |")
@@ -184,7 +205,11 @@ def write_tables_markdown(
         share = 100.0 * support[idx] / total if total else 0.0
         lines.append(
             "| {} | {} | {:.2f} | {:.4f} | {:.4f} |".format(
-                idx, name, share, metrics["iou_per_class"][idx], metrics["f1_per_class"][idx],
+                idx,
+                name,
+                share,
+                metrics["iou_per_class"][idx],
+                metrics["f1_per_class"][idx],
             )
         )
     lines.append("")
@@ -213,21 +238,29 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     plot_confusion_matrix(
-        cm, class_names, normalized=True,
+        cm,
+        class_names,
+        normalized=True,
         title="Матрица ошибок SA-MiT (нормирована по строкам)",
         path=os.path.join(out_dir, "fig_4_8_confusion_matrix_normalized.png"),
     )
     plot_confusion_matrix(
-        cm, class_names, normalized=False,
+        cm,
+        class_names,
+        normalized=False,
         title="Матрица ошибок SA-MiT (число пикселей, лог. шкала)",
         path=os.path.join(out_dir, "fig_4_8_confusion_matrix_counts.png"),
     )
     plot_per_class_bars(
-        metrics["iou_per_class"], metrics["f1_per_class"], class_names,
+        metrics["iou_per_class"],
+        metrics["f1_per_class"],
+        class_names,
         path=os.path.join(out_dir, "per_class_iou_f1_bars.png"),
     )
     write_tables_markdown(
-        metrics, class_names, cm,
+        metrics,
+        class_names,
+        cm,
         path=os.path.join(out_dir, "tables_4_18_4_19.md"),
     )
 

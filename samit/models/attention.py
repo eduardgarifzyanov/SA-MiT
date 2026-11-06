@@ -82,8 +82,8 @@ class SpeckleAwareAttention(nn.Module):
         self.dim = dim
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
-        self.scale = self.head_dim ** -0.5      # 1 / √d_h
-        self.scale_inv = self.head_dim ** 0.5   # √d_h
+        self.scale = self.head_dim**-0.5  # 1 / √d_h
+        self.scale_inv = self.head_dim**0.5  # √d_h
         self.sr_ratio = sr_ratio
         self.beta = beta
 
@@ -98,9 +98,7 @@ class SpeckleAwareAttention(nn.Module):
 
         # Обучаемые параметры спекл-модуляции (раздел 3.4).
         # γ_h — по одной на голову.
-        self.speckle_gain = nn.Parameter(
-            torch.full((num_heads,), float(gamma_init))
-        )
+        self.speckle_gain = nn.Parameter(torch.full((num_heads,), float(gamma_init)))
         # τ — общий порог структурной значимости.
         self.tau = nn.Parameter(torch.tensor(float(tau_init)))
 
@@ -128,7 +126,7 @@ class SpeckleAwareAttention(nn.Module):
         B = s_map.shape[0]
         s_2d = s_map.transpose(1, 2).reshape(B, 1, H, W)  # (B, 1, H, W)
         s_2d = F.avg_pool2d(s_2d, kernel_size=self.sr_ratio, stride=self.sr_ratio)
-        return s_2d.flatten(2).transpose(1, 2)            # (B, L_kv, 1)
+        return s_2d.flatten(2).transpose(1, 2)  # (B, L_kv, 1)
 
     def forward(
         self,
@@ -166,36 +164,34 @@ class SpeckleAwareAttention(nn.Module):
             x_map = x.transpose(1, 2).reshape(B, D, H, W)
             kv_input = self.sr(x_map).flatten(2).transpose(1, 2)
             kv_input = self.sr_norm(kv_input)
-        kv = self.kv_proj(kv_input).reshape(
-            B, -1, 2, self.num_heads, self.head_dim
-        )
-        kv = kv.permute(2, 0, 3, 1, 4)              # (2, B, h, L_kv, d)
+        kv = self.kv_proj(kv_input).reshape(B, -1, 2, self.num_heads, self.head_dim)
+        kv = kv.permute(2, 0, 3, 1, 4)  # (2, B, h, L_kv, d)
         k, v = kv[0], kv[1]
 
         # Логиты внимания: A_{l,h,i,j} = Q_i K_j^T / √d_h
-        attn = (q @ k.transpose(-2, -1)) * self.scale          # (B, h, L, L_kv)
+        attn = (q @ k.transpose(-2, -1)) * self.scale  # (B, h, L, L_kv)
 
         # ---- Спекл-модуляция (формула 3.4 диплома) ----
         # Сначала согласуем S̃ с разрешением ключей.
-        s_kv = self._reduce_s_map(s_map, H, W)                 # (B, L_kv, 1)
+        s_kv = self._reduce_s_map(s_map, H, W)  # (B, L_kv, 1)
 
         # Сигмоидальное переключение m_j = σ(β·(S̃_j − τ)).
-        m = torch.sigmoid(self.beta * (s_kv - self.tau))       # (B, L_kv, 1)
+        m = torch.sigmoid(self.beta * (s_kv - self.tau))  # (B, L_kv, 1)
 
         # γ_h по головам.
         gamma = self.speckle_gain.view(1, self.num_heads, 1, 1)  # (1, h, 1, 1)
 
         # Штраф по столбцу j: penalty_{h,j} = m_j · γ_h · S̃_j · √d_h.
         # Приводим к форме (B, h, 1, L_kv), чтобы вычитание шло ПО КЛЮЧАМ.
-        penalty = (m * s_kv * self.scale_inv)                  # (B, L_kv, 1)
-        penalty = penalty.transpose(1, 2).unsqueeze(1)         # (B, 1, 1, L_kv)
-        penalty = gamma * penalty                              # (B, h, 1, L_kv)
+        penalty = m * s_kv * self.scale_inv  # (B, L_kv, 1)
+        penalty = penalty.transpose(1, 2).unsqueeze(1)  # (B, 1, 1, L_kv)
+        penalty = gamma * penalty  # (B, h, 1, L_kv)
 
-        attn = attn - penalty                                  # (B, h, L, L_kv)
+        attn = attn - penalty  # (B, h, L, L_kv)
         attn = attn.softmax(dim=-1)
 
         # Агрегация значений
-        out = attn @ v                                         # (B, h, L, d)
+        out = attn @ v  # (B, h, L, d)
         out = out.transpose(1, 2).reshape(B, L, D)
         out = self.out_proj(out)
         return out

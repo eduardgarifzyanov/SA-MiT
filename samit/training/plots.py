@@ -83,9 +83,12 @@ def plot_training_curves(
 
         plt.figure(figsize=(8, 5))
         plt.plot(
-            m_epochs, m_values,
-            label=metric_label, color="darkorange",
-            marker="o", markersize=3,
+            m_epochs,
+            m_values,
+            label=metric_label,
+            color="darkorange",
+            marker="o",
+            markersize=3,
         )
         plt.xlabel("Epoch")
         plt.ylabel(metric_label)
@@ -123,11 +126,11 @@ def plot_dual_axis(
     epochs = [e + 1 for e in history.get("epochs", range(len(train_loss)))]
 
     fig, ax_loss = plt.subplots(figsize=(8, 5))
-    l1, = ax_loss.plot(epochs, train_loss, color="tab:blue", label="Train Loss")
+    (l1,) = ax_loss.plot(epochs, train_loss, color="tab:blue", label="Train Loss")
     val_loss = history.get("val_loss") or []
     handles = [l1]
     if any(v is not None for v in val_loss):
-        l2, = ax_loss.plot(epochs, val_loss, color="tab:cyan", label="Val Loss")
+        (l2,) = ax_loss.plot(epochs, val_loss, color="tab:cyan", label="Val Loss")
         handles.append(l2)
     ax_loss.set_xlabel("Epoch")
     ax_loss.set_ylabel("Loss", color="tab:blue")
@@ -139,8 +142,11 @@ def plot_dual_axis(
         m_epochs = [epochs[i] for i, v in enumerate(metric_values_raw) if v is not None]
         m_values = [v for v in metric_values_raw if v is not None]
         ax_metric = ax_loss.twinx()
-        l3, = ax_metric.plot(
-            m_epochs, m_values, color="tab:orange", label=metric_label,
+        (l3,) = ax_metric.plot(
+            m_epochs,
+            m_values,
+            color="tab:orange",
+            label=metric_label,
         )
         ax_metric.set_ylabel(metric_label, color="tab:orange")
         ax_metric.tick_params(axis="y", labelcolor="tab:orange")
