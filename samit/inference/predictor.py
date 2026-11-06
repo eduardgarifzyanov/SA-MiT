@@ -32,7 +32,7 @@ class Predictor:
                     arr = arr / 255.0
                 elif not np.issubdtype(image.dtype, np.floating):
                     raise ValueError("Expected uint8 or floating-point image in [0, 1]")
-                if not np.isfinite(arr).all() or arr.min() < 0 or arr.max() > 1:
+                if not np.isfinite(arr).all() or np.any(arr < 0) or np.any(arr > 1):
                     raise ValueError(
                         "Floating-point images must be finite and in [0, 1]"
                     )
