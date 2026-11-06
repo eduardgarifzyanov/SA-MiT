@@ -197,6 +197,8 @@ def main():
         use_amp=common.get("use_amp", True),
         grad_accum_steps=seg_cfg["grad_accum"],
         grad_clip=common.get("grad_clip", 1.0),
+        log_interval=common.get("log_interval", 50),
+        progress_logger=log,
     )
     start = 0
     if args.resume:

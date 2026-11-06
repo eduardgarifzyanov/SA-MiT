@@ -208,6 +208,8 @@ def main():
         use_amp=common.get("use_amp", True),
         grad_accum_steps=ssl_cfg["grad_accum"],
         grad_clip=common.get("grad_clip", 1.0),
+        log_interval=common.get("log_interval", 50),
+        progress_logger=log,
         hog_cell_size=common.get("hog_cell_size", 16),
         hog_num_bins=common.get("hog_num_bins", 9),
         distributed=distributed,

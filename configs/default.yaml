@@ -16,6 +16,7 @@ common:
   mean: 0.19881704541655196       # new seg_train only; manifests/audit.json
   std: 0.14982036377782001
   num_workers: 16
+  log_interval: 50              # progress every 50 local batches, next launch
   use_amp: true
   grad_clip: 1.0
   keep_last: 3
@@ -40,7 +41,7 @@ stages:
   ssl:
     train_index: /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/ssl_train.tsv
     batch_size: 64
-    grad_accum: 2                 # эффективный батч 32
+    grad_accum: 2                 # effective batch = 64 * 2 GPUs * 2 = 256
     epochs: 3                   # 200–300 — см. таблицу 4.10
     lr: 1.5e-4
     min_lr: 1.0e-6
@@ -60,7 +61,7 @@ stages:
     test_index:  /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/seg_test.tsv
     batch_size: 54
     val_batch_size: 8
-    grad_accum: 4                 # эффективный батч 32
+    grad_accum: 4                 # effective batch = 54 * 2 GPUs * 4 = 432
     epochs: 150
     lr: 6.0e-5                    # либо 1.0e-4 при «холодном старте»
     min_lr: 1.0e-6

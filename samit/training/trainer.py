@@ -47,6 +47,7 @@ class TwoStageTrainer:
         hog_num_bins: int = 9,
         distributed: bool = False,
         local_rank: int = 0,
+        progress_logger=None,
     ) -> None:
         assert stage in ("ssl", "seg")
         self.model = model.to(device)
@@ -63,6 +64,7 @@ class TwoStageTrainer:
         self.grad_accum_steps = max(1, grad_accum_steps)
         self.grad_clip = grad_clip
         self.log_interval = log_interval
+        self.progress_logger = progress_logger
         self.val_interval = val_interval
         self.hog_cell_size = hog_cell_size
         self.hog_num_bins = hog_num_bins
@@ -154,6 +156,23 @@ class TwoStageTrainer:
 
             running_loss += loss.item() * group_size
             running_count += 1
+            if (self.is_main_process and self.progress_logger is not None
+                    and ((i + 1) % max(1, self.log_interval) == 0
+                         or i + 1 == num_batches)):
+                elapsed = time.time() - t0
+                batches_per_second = (i + 1) / max(elapsed, 1e-9)
+                eta = (num_batches - i - 1) / batches_per_second
+                # Local running mean, no extra DDP collectives for logging.
+                self.progress_logger.info(
+                    "stage=%s epoch=%d batch=%d/%d progress=%.2f%% "
+                    "loss_local=%.6f updates=%d lr=%.3g "
+                    "batches_per_second=%.3f epoch_eta_seconds=%.0f",
+                    self.stage, epoch + 1, i + 1, num_batches,
+                    100 * (i + 1) / num_batches,
+                    running_loss / running_count, self.global_step,
+                    self.optimizer.param_groups[0]["lr"],
+                    batches_per_second, eta,
+                )
 
         if self.distributed:
             stats = torch.tensor([running_loss, running_count],
@@ -281,6 +300,9 @@ class TwoStageTrainer:
                         f"{val_stats.get('mean_iou', 0):.4f}"
                     )
 
-                print(msg)
+                if self.progress_logger is not None:
+                    self.progress_logger.info(msg)
+                else:
+                    print(msg)
 
         return history
