@@ -15,7 +15,6 @@ from __future__ import annotations
 import os
 
 import argparse
-import json
 import math
 from pathlib import Path
 
@@ -135,6 +134,8 @@ def main():
         is_train=True,
         num_workers=common.get("num_workers", 4),
         sampler=train_sampler,
+        persistent_workers=common.get("persistent_workers", True),
+        prefetch_factor=common.get("prefetch_factor", 2),
     )
     val_loader = build_dataloader(
         val_ds,
@@ -219,6 +220,7 @@ def main():
         grad_clip=common.get("grad_clip", 1.0),
         log_interval=common.get("log_interval", 50),
         progress_logger=log,
+        ddp_no_sync=common.get("ddp_no_sync", True),
     )
     start = 0
     if args.resume:
@@ -237,8 +239,13 @@ def main():
     history = trainer.fit(
         num_epochs=seg_cfg["epochs"],
         start_epoch=start,
+        history_path=Path(seg_cfg["plot_dir"]) / "history.json",
         history=(
-            resume_history(Path(seg_cfg["plot_dir"]) / "history.json", start)
+            resume_history(
+                Path(seg_cfg["plot_dir"]) / "history.json",
+                start,
+                checkpoint_history=ckpt.history,
+            )
             if args.resume
             else None
         ),
@@ -252,9 +259,6 @@ def main():
             parents=True,
             exist_ok=True,
         )
-
-        with open(plot_dir / "history.json", "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
 
         result = plot_training_curves(
             history,

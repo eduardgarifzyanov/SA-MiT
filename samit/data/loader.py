@@ -48,6 +48,8 @@ def build_dataloader(
     num_workers: int = 16,
     pin_memory: bool = True,
     sampler=None,
+    persistent_workers: bool = True,
+    prefetch_factor: int = 2,
 ) -> DataLoader:
     """
     Создаёт DataLoader для SARDataset.
@@ -61,33 +63,19 @@ def build_dataloader(
         (обычно DistributedSampler)
     """
 
-    # Если sampler передан извне (DDP)
-
-    if sampler is not None:
-
-        return DataLoader(
-            dataset,
-            batch_size=batch_size,
-            sampler=sampler,
-            shuffle=False,
-            num_workers=num_workers,
-            pin_memory=pin_memory,
-            drop_last=is_train,
-            collate_fn=_collate_fn,
-        )
-
-    # Обычный single-GPU режим
-
-    sampler = RandomSampler(dataset) if is_train else SequentialSampler(dataset)
-
+    if prefetch_factor < 1:
+        raise ValueError("prefetch_factor must be positive")
+    if sampler is None:
+        sampler = RandomSampler(dataset) if is_train else SequentialSampler(dataset)
     return DataLoader(
         dataset,
         batch_size=batch_size,
         sampler=sampler,
+        shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
         drop_last=is_train,
         collate_fn=_collate_fn,
-        persistent_workers=num_workers > 0,
-        prefetch_factor=4 if num_workers > 0 else None,
+        persistent_workers=persistent_workers and num_workers > 0,
+        prefetch_factor=prefetch_factor if num_workers > 0 else None,
     )

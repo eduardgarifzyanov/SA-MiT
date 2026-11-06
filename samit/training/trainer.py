@@ -13,12 +13,14 @@
     - в режиме 'ssl' HOG-цель считается на лету на GPU.
 """
 
+from contextlib import nullcontext
 import time
 
 import torch
 from torch.amp import GradScaler, autocast
 import torch.distributed as dist
 
+from samit.training.history import save_history
 from samit.data.hog import compute_hog_target
 from samit.data.ssl import mask_ssl_image
 
@@ -48,6 +50,7 @@ class TwoStageTrainer:
         distributed: bool = False,
         local_rank: int = 0,
         progress_logger=None,
+        ddp_no_sync: bool = True,
     ) -> None:
         assert stage in ("ssl", "seg")
         self.model = model.to(device)
@@ -65,6 +68,7 @@ class TwoStageTrainer:
         self.grad_clip = grad_clip
         self.log_interval = log_interval
         self.progress_logger = progress_logger
+        self.ddp_no_sync = ddp_no_sync
         self.val_interval = val_interval
         self.hog_cell_size = hog_cell_size
         self.hog_num_bins = hog_num_bins
@@ -110,7 +114,7 @@ class TwoStageTrainer:
         if sampler is not None and hasattr(sampler, "set_epoch"):
             sampler.set_epoch(epoch)
         self.model.train()
-        running_loss = 0.0
+        running_loss = torch.zeros((), dtype=torch.float64, device=self.device)
         running_count = 0
         t0 = time.time()
         self.optimizer.zero_grad(set_to_none=True)
@@ -123,16 +127,23 @@ class TwoStageTrainer:
         for i, batch in enumerate(self.train_loader):
             group_start = (i // self.grad_accum_steps) * self.grad_accum_steps
             group_size = min(self.grad_accum_steps, num_batches - group_start)
-            with autocast(
-                device_type="cuda",
-                enabled=self.use_amp and "cuda" in str(self.device),
-            ):
-                loss, _, _ = self._forward_step(batch)
-                loss = loss / group_size
+            update_now = (i + 1) % self.grad_accum_steps == 0 or i + 1 == num_batches
+            # Both forward and backward must be inside no_sync.
+            sync_context = (
+                self.model.no_sync()
+                if self.ddp_no_sync and self.distributed and not update_now
+                else nullcontext()
+            )
+            with sync_context:
+                with autocast(
+                    device_type="cuda",
+                    enabled=self.use_amp and "cuda" in str(self.device),
+                ):
+                    loss, _, _ = self._forward_step(batch)
+                    loss = loss / group_size
+                self.scaler.scale(loss).backward()
 
-            self.scaler.scale(loss).backward()
-
-            if (i + 1) % self.grad_accum_steps == 0 or i + 1 == num_batches:
+            if update_now:
                 if self.grad_clip is not None:
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(
@@ -157,7 +168,7 @@ class TwoStageTrainer:
                     )
                     logger.add_scalar(f"{self.stage}/lr", lr, self.global_step)
 
-            running_loss += loss.item() * group_size
+            running_loss += loss.detach().to(torch.float64) * group_size
             running_count += 1
             if (
                 self.is_main_process
@@ -177,20 +188,18 @@ class TwoStageTrainer:
                     i + 1,
                     num_batches,
                     100 * (i + 1) / num_batches,
-                    running_loss / running_count,
+                    float(running_loss / running_count),
                     self.global_step,
                     self.optimizer.param_groups[0]["lr"],
                     batches_per_second,
                     eta,
                 )
 
+        stats = torch.stack((running_loss, running_loss.new_tensor(running_count)))
         if self.distributed:
-            stats = torch.tensor(
-                [running_loss, running_count], dtype=torch.float64, device=self.device
-            )
             dist.all_reduce(stats)
-            running_loss, running_count = stats.tolist()
-        avg_loss = running_loss / max(1, running_count)
+        loss_sum, count = stats.tolist()
+        avg_loss = loss_sum / max(1, count)
         elapsed = time.time() - t0
         return {"loss": avg_loss, "time": elapsed, "epoch": epoch}
 
@@ -240,7 +249,12 @@ class TwoStageTrainer:
     # ----- ВНЕШНИЙ ВЫЗОВ -----
 
     def fit(
-        self, num_epochs: int, start_epoch: int = 0, logger=None, history=None
+        self,
+        num_epochs: int,
+        start_epoch: int = 0,
+        logger=None,
+        history=None,
+        history_path=None,
     ) -> dict:
 
         history = (
@@ -298,8 +312,11 @@ class TwoStageTrainer:
                     self.scheduler,
                     scaler=self.scaler,
                     metric_value=metric_value,
+                    history=history,
                 )
             if self.is_main_process:
+                if history_path is not None:
+                    save_history(history_path, history)
                 msg = (
                     f"[epoch {epoch:03d}] "
                     f"stage={self.stage} "

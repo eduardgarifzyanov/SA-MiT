@@ -16,6 +16,9 @@ common:
   mean: 0.19881704541655196       # new seg_train only; manifests/audit.json
   std: 0.14982036377782001
   num_workers: 16
+  persistent_workers: true
+  prefetch_factor: 2
+  ddp_no_sync: true              # synchronize accumulated gradients only on update
   log_interval: 50              # progress every 50 local batches, next launch
   use_amp: true
   grad_clip: 1.0

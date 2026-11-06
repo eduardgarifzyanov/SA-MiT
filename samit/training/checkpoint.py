@@ -3,7 +3,7 @@
 import glob
 import os
 import tempfile
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 
@@ -32,6 +32,7 @@ class Checkpointer:
         self.keep_last = keep_last
         self.best_metric_name = best_metric_name
         self.mode = mode
+        self.history: Any = None
         self.best_value = -float("inf") if mode == "max" else float("inf")
 
     def _list_checkpoints(self):
@@ -45,6 +46,7 @@ class Checkpointer:
         scheduler,
         scaler=None,
         metric_value: Optional[float] = None,
+        history=None,
     ) -> None:
         improved = metric_value is not None and (
             metric_value > self.best_value
@@ -62,6 +64,7 @@ class Checkpointer:
             "scheduler": scheduler.state_dict(),
             "scaler": scaler.state_dict() if scaler is not None else None,
             "best_value": next_best,
+            "history": history,
         }
 
         epoch_name = f"epoch_{epoch:04d}.pt"
@@ -122,4 +125,19 @@ class Checkpointer:
         self.best_value = state.get(
             "best_value", -float("inf") if self.mode == "max" else float("inf")
         )
+        self.history = state.get("history")
+        # The first legacy SSL checkpoint has no history; its best is exactly
+        # that first epoch's train loss. Do not infer later epochs or SEG loss.
+        if (
+            self.history is None
+            and state.get("epoch") == 0
+            and self.mode == "min"
+            and self.best_metric_name == "train_loss"
+        ):
+            self.history = {
+                "epochs": [0],
+                "train_loss": [self.best_value],
+                "val_loss": [None],
+                "mean_iou": [None],
+            }
         return state.get("epoch", 0)

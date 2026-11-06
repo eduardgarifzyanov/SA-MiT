@@ -14,7 +14,6 @@ scripts/run_pretrain.py — запуск этапа 1 (HOG-MIM SSL-предоб�
 from __future__ import annotations
 
 import argparse
-import json
 import math
 import os
 from pathlib import Path
@@ -132,6 +131,8 @@ def main():
         is_train=True,
         num_workers=common.get("num_workers", 4),
         sampler=train_sampler,
+        persistent_workers=common.get("persistent_workers", True),
+        prefetch_factor=common.get("prefetch_factor", 2),
     )
 
     world_size = dist.get_world_size() if distributed else 1
@@ -202,6 +203,7 @@ def main():
         grad_clip=common.get("grad_clip", 1.0),
         log_interval=common.get("log_interval", 50),
         progress_logger=log,
+        ddp_no_sync=common.get("ddp_no_sync", True),
         hog_cell_size=common.get("hog_cell_size", 16),
         hog_num_bins=common.get("hog_num_bins", 9),
         distributed=distributed,
@@ -223,21 +225,23 @@ def main():
         trainer.global_step = scheduler.step_count
     previous = (
         resume_history(
-            Path(ssl_cfg.get("plot_dir", "results/ssl_viz")) / "history.json", start
+            Path(ssl_cfg.get("plot_dir", "results/ssl_viz")) / "history.json",
+            start,
+            checkpoint_history=ckpt.history,
         )
         if args.resume
         else None
     )
     history = trainer.fit(
-        num_epochs=ssl_cfg["epochs"], start_epoch=start, history=previous
+        num_epochs=ssl_cfg["epochs"],
+        start_epoch=start,
+        history=previous,
+        history_path=Path(ssl_cfg.get("plot_dir", "results/ssl_viz")) / "history.json",
     )
 
     if not distributed or dist.get_rank() == 0:
         plot_dir = Path(ssl_cfg.get("plot_dir", "results/ssl_viz"))
         plot_dir.mkdir(parents=True, exist_ok=True)
-
-        with open(plot_dir / "history.json", "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
 
         result = plot_training_curves(
             history,
