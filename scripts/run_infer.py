@@ -156,6 +156,7 @@ def main():
         for record in test_ds.items
     ]
     results = evaluator.run()
+    results["class_names"] = common.get("class_names")
     with open(os.path.join(args.output, "metrics.json"), "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
     log.info(
