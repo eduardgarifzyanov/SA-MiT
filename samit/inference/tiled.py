@@ -4,6 +4,13 @@ import numpy as np
 import torch
 
 
+def make_blend_window(tile_size, use_hann=True):
+    if not use_hann:
+        return torch.ones((tile_size, tile_size), dtype=torch.float32)
+    window = torch.hann_window(tile_size, periodic=False)
+    return torch.outer(window, window).clamp_min(1e-3)
+
+
 class TiledInference:
     """The NumPy and normalized-tensor paths share one inference algorithm."""
 
@@ -17,13 +24,7 @@ class TiledInference:
         self.stride = stride
         self.num_classes = num_classes
         self.use_hann = use_hann
-        self._weight = self._build_window()
-
-    def _build_window(self):
-        if not self.use_hann:
-            return torch.ones((self.tile_size, self.tile_size), dtype=torch.float32)
-        window = torch.hann_window(self.tile_size, periodic=False)
-        return torch.outer(window, window).clamp_min(1e-3)
+        self._weight = make_blend_window(tile_size, use_hann)
 
     def _padded_length(self, length):
         extra = max(0, length - self.tile_size)

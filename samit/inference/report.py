@@ -9,8 +9,12 @@ from PIL import Image, ImageDraw
 from .visualize import colorize_segmentation, overlay_prediction
 
 
-def export_comparison(image, target, pred, palette, ignore_index, path):
+def export_comparison(
+    image, target, pred, palette, ignore_index, path, *, coverage=None
+):
     image = np.asarray(image)
+    if palette is not None:
+        palette = np.asarray(palette, dtype=np.uint8)
     target, pred = np.asarray(target), np.asarray(pred)
     valid = target != ignore_index
     safe = np.where(valid, target, 0)
@@ -20,12 +24,17 @@ def export_comparison(image, target, pred, palette, ignore_index, path):
     raw = (np.clip(image, 0, 1) * 255).astype(np.uint8)
     raw = np.repeat(raw[:, :, None], 3, axis=2)
     overlay = overlay_prediction(image, pred, colors=palette)
+    prediction_label = "Prediction"
+    if coverage is not None and not np.all(coverage):
+        prediction[~coverage] = 128
+        overlay[~coverage] = raw[~coverage]
+        prediction_label = "Prediction (gray = uncovered)"
     height, width = image.shape
     panel = Image.new("RGB", (width * 4, height + 24), "white")
     draw = ImageDraw.Draw(panel)
     for i, (label, pixels) in enumerate(
         zip(
-            ["Image", "Ground truth (white = ignore)", "Prediction", "Overlay"],
+            ["Image", "Ground truth (white = ignore)", prediction_label, "Overlay"],
             [raw, truth, prediction, overlay],
         )
     ):
