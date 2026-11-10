@@ -1,0 +1,77 @@
+common:
+  seed: 42
+  data_root: /ssd/egarifyzanov/sa_mit_v2
+  prepared_dataset: true
+  image_size: 512
+  in_channels: 1
+  num_classes: 4
+  hog_dim: 27
+  hog_cell_size: 16
+  hog_num_bins: 9
+  ignore_index: 255
+  mean: 0.19881704541655196
+  std: 0.14982036377782001
+  num_workers: 16
+  persistent_workers: true
+  prefetch_factor: 2
+  ddp_no_sync: true
+  log_interval: 50
+  use_amp: true
+  grad_clip: 1.0
+  keep_last: 3
+  class_names:
+  - Вода
+  - Дороги
+  - Строения
+  - Растительность
+  palette:
+  - - 46
+    - 117
+    - 182
+  - - 255
+    - 192
+    - 0
+  - - 192
+    - 0
+    - 0
+  - - 84
+    - 130
+    - 53
+stages:
+  ssl:
+    train_index: /ssd/egarifyzanov/sa_mit_v2/indices/ssl_train.tsv
+    batch_size: 64
+    grad_accum: 2
+    epochs: 3
+    lr: 0.00015
+    min_lr: 1.0e-06
+    weight_decay: 0.05
+    betas:
+    - 0.9
+    - 0.95
+    warmup_steps: 1500
+    mask_ratio: 0.6
+    block_size: 16
+    checkpoint_dir: checkpoints/v2/ssl
+    plot_dir: results/v2/ssl_viz
+    log_file: logs/v2/ssl.log
+  seg:
+    train_index: /ssd/egarifyzanov/sa_mit_v2/indices/seg_train.tsv
+    val_index: /ssd/egarifyzanov/sa_mit_v2/indices/seg_val.tsv
+    test_index: /ssd/egarifyzanov/sa_mit_v2/indices/seg_test.tsv
+    batch_size: 36
+    val_batch_size: 8
+    grad_accum: 6
+    epochs: 150  # horizon of the LR schedule
+    lr: 6.0e-05
+    min_lr: 1.0e-06
+    weight_decay: 0.05
+    betas:
+    - 0.9
+    - 0.999
+    warmup_steps: 1000
+    lambda_ce: 1.0
+    lambda_dice: 0.5
+    checkpoint_dir: checkpoints/v2/ablation/scratch
+    plot_dir: results/v2/ablation/scratch
+    log_file: logs/v2/ablation/scratch.log
