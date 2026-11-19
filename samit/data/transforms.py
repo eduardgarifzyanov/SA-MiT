@@ -1,18 +1,7 @@
-"""Аугментации для пары (изображение, маска классов).
+"""Геометрические аугментации пары (изображение, маска классов).
 
-Реализация подраздела 4.5.2. Все геометрические преобразования
-применяются СОГЛАСОВАННО к изображению и маске; радиометрические и
-шумовые искажения — только к изображению.
-
-Аугментации:
-    - случайное горизонтальное/вертикальное отражение;
-    - случайный поворот на 90°·k;
-    - яркость / контраст (моделирование вариаций режимов съёмки);
-    - аддитивный гауссов шум (термальный шум);
-    - мультипликативный гамма-шум (моделирование спекла).
-
-В режиме mode='eval' геометрические и шумовые искажения отключены;
-выполняется только resize и нормировка.
+В train случайные отражения и повороты на 90°·k применяются согласованно
+к изображению и маске. В eval выполняются resize и нормировка.
 """
 
 from typing import Any
@@ -41,10 +30,6 @@ class SARTransform:
         hflip_prob: float = 0.5,
         vflip_prob: float = 0.5,
         rotate90_prob: float = 0.5,
-        brightness_range=(-0.1, 0.1),
-        contrast_range=(0.9, 1.1),
-        gauss_noise_std: float = 0.02,
-        gamma_noise_shape: float = 50.0,
         mean: float = 0.5,
         std: float = 0.25,
         mode: str = "train",
@@ -57,10 +42,6 @@ class SARTransform:
         self.hflip_prob = hflip_prob
         self.vflip_prob = vflip_prob
         self.rotate90_prob = rotate90_prob
-        self.brightness_range = brightness_range
-        self.contrast_range = contrast_range
-        self.gauss_noise_std = gauss_noise_std
-        self.gamma_noise_shape = gamma_noise_shape
         self.mean = mean
         self.std = std
         self.mode = mode
@@ -102,28 +83,6 @@ class SARTransform:
                 label = np.rot90(label, k).copy()
         return image, label
 
-    # ---------- радиометрические и шумовые преобразования ----------
-
-    def _radiometric(self, image):
-        beta = np.random.uniform(*self.brightness_range)
-        alpha = np.random.uniform(*self.contrast_range)
-        return np.clip(alpha * image + beta, 0.0, 1.0)
-
-    def _additive_gaussian(self, image):
-        if self.gauss_noise_std > 0:
-            noise = np.random.normal(0.0, self.gauss_noise_std, image.shape)
-            image = np.clip(image + noise.astype(np.float32), 0.0, 1.0)
-        return image
-
-    def _multiplicative_speckle(self, image):
-        if self.gamma_noise_shape > 0:
-            k = self.gamma_noise_shape
-            mult = np.random.gamma(shape=k, scale=1.0 / k, size=image.shape).astype(
-                np.float32
-            )
-            image = np.clip(image * mult, 0.0, 1.0)
-        return image
-
     def _normalize(self, image):
         return (image - self.mean) / self.std
 
@@ -134,8 +93,5 @@ class SARTransform:
         if self.mode == "train":
             image, label = self._random_flip(image, label)
             image, label = self._random_rotate90(image, label)
-            image = self._radiometric(image)
-            image = self._additive_gaussian(image)
-            image = self._multiplicative_speckle(image)
         image = self._normalize(image).astype(np.float32)
         return image, label

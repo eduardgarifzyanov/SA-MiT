@@ -120,10 +120,6 @@ def test_geometry_keeps_image_and_labels_aligned(k):
         hflip_prob=1,
         vflip_prob=1,
         rotate90_prob=1,
-        brightness_range=(0, 0),
-        contrast_range=(1, 1),
-        gauss_noise_std=0,
-        gamma_noise_shape=0,
         mean=0,
         std=1,
     )
@@ -145,20 +141,17 @@ def test_eval_is_deterministic_and_resize_preserves_class_ids():
     assert set(np.unique(mask)) == {0, 1, 2, 3, 255}
 
 
-def test_speckle_has_configured_mean_and_variance_without_clipping():
-    np.random.seed(42)
+def test_train_transform_preserves_intensity_without_geometry():
     transform = SARTransform(
-        image_size=512,
+        image_size=32,
         hflip_prob=0,
         vflip_prob=0,
         rotate90_prob=0,
-        brightness_range=(0, 0),
-        contrast_range=(1, 1),
-        gauss_noise_std=0,
-        gamma_noise_shape=50,
-        mean=0,
-        std=1,
+        mean=0.25,
+        std=0.5,
     )
-    image, _ = transform(np.full((512, 512), 0.25, dtype=np.float32), None)
-    assert image.mean() == pytest.approx(0.25, abs=0.001)
-    assert image.var() == pytest.approx(0.25**2 / 50, rel=0.05)
+    image = np.linspace(0, 1, 32 * 32, dtype=np.float32).reshape(32, 32)
+    actual, label = transform(image, None)
+
+    np.testing.assert_array_equal(actual, (image - 0.25) / 0.5)
+    assert label is None
