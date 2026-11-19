@@ -31,7 +31,7 @@ import torch.nn as nn
 from .attention import SpeckleAwareAttention
 from .ffn import SwiGLUFFN
 from .patch_embed import OverlapPatchEmbed
-from ..utils.speckle import compute_s_map_for_grid
+from ..utils.speckle import s_map_from_magnitude, sobel_magnitude
 
 
 class SAMiTBlock(nn.Module):
@@ -119,13 +119,13 @@ class SAMiTEncoder(nn.Module):
         совсем дёшево), а не считается заново внутри каждого блока.
         """
         B = x.size(0)
-        x_input = x  # сохранение исходного изображения для расчёта S̃
+        magnitude = sobel_magnitude(x)
         features = []
         feat = x
         for i in range(self.num_stages):
             feat, (H, W) = self.patch_embeds[i](feat)
             # Карта значимости для текущей стадии: (B, H·W, 1)
-            s_map = compute_s_map_for_grid(x_input, H, W)
+            s_map = s_map_from_magnitude(magnitude, H, W)
             for block in cast(nn.ModuleList, self.stages[i]):
                 feat = block(feat, H, W, s_map)
             feat = self.norms[i](feat)

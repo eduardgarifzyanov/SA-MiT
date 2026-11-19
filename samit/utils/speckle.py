@@ -76,14 +76,15 @@ def compute_s_map_for_grid(
     torch.Tensor of shape (B, H·W, 1)
         Карта S̃_j ∈ [0, 1] на разрешении токенов стадии.
     """
-    B, _, H_in, W_in = x.shape
-    assert (
-        1 <= H <= H_in and 1 <= W <= W_in
-    ), f"Целевая сетка {H}x{W} крупнее входа {H_in}x{W_in}"
+    return s_map_from_magnitude(sobel_magnitude(x), H, W, eps)
 
-    # |∇I| по Собелю на исходном разрешении (один раз).
-    g = sobel_magnitude(x)  # (B, 1, H_in, W_in)
 
+def s_map_from_magnitude(
+    g: torch.Tensor, H: int, W: int, eps: float = 1e-6
+) -> torch.Tensor:
+    """Pool a shared Sobel magnitude without recomputing image gradients."""
+    B, _, H_in, W_in = g.shape
+    assert 1 <= H <= H_in and 1 <= W <= W_in
     # Усреднение по эффективному патчу p_k × p_k.
     # Identical to fixed average pooling for divisible shapes; all input
     # pixels are represented for odd and rectangular grids as well.
