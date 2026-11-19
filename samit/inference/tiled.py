@@ -12,13 +12,20 @@ def make_blend_window(tile_size, use_hann=True):
 
 
 class TiledInference:
-    """The NumPy and normalized-tensor paths share one inference algorithm."""
+    """Shared tiled inference; full-scene buffers default to CPU.
+
+    Only individual tiles are sent to predictor.device. Set accumulation_device
+    explicitly to a GPU device to trade GPU memory for fewer transfers. CPU
+    accumulation still requires host memory proportional to scene area.
+    """
 
     def __init__(
-        self, predictor, tile_size=512, stride=384, num_classes=7, use_hann=True
+        self, predictor, tile_size=512, stride=384, num_classes=7, use_hann=True,
+        accumulation_device="cpu",
     ):
         if not 0 < stride <= tile_size or num_classes < 1:
             raise ValueError("Require 0 < stride <= tile_size and positive num_classes")
+        self.accumulation_device = accumulation_device
         self.predictor = predictor
         self.tile_size = tile_size
         self.stride = stride
@@ -58,7 +65,7 @@ class TiledInference:
         if x.dim() != 2 or min(x.shape) < 1:
             raise ValueError("Expected a nonempty 2D tensor")
         original_h, original_w = x.shape
-        device = self.predictor.device
+        device = self.accumulation_device
         x = x.to(device, non_blocking=True)
         height, width = self._padded_length(original_h), self._padded_length(original_w)
         ys = self._reflection_indices(original_h, height, device)
@@ -74,6 +81,7 @@ class TiledInference:
             _, probs = self.predictor.predict_tensor(tile, return_probs=True)
             if probs.shape[1] != self.num_classes:
                 raise ValueError("Model output channels do not match num_classes")
+            probs = probs.to(device)
             accum[:, y : y + self.tile_size, column : column + self.tile_size] += (
                 probs[0] * window
             )
