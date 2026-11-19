@@ -12,6 +12,7 @@ from samit.data.hog import compute_hog_target
 from samit.data.masking import BlockwiseMaskGenerator
 from samit.data.ssl import mask_ssl_image
 from samit.data.transforms import SARTransform
+from samit.models.samit import SAMiT
 from samit.training.losses import HOGReconstructionLoss
 from samit.training.trainer import TwoStageTrainer
 
@@ -155,3 +156,29 @@ def test_train_transform_preserves_intensity_without_geometry():
 
     np.testing.assert_array_equal(actual, (image - 0.25) / 0.5)
     assert label is None
+
+
+def test_multiscale_ssl_predicts_native_hog_grid_and_trains_both_branches():
+    kwargs = {
+        "embed_dims": (8, 16, 32, 64),
+        "num_heads": (1, 2, 4, 8),
+        "depths": (1, 1, 1, 1),
+    }
+    legacy = SAMiT(**kwargs)
+    coarse = SAMiT(**kwargs, ssl_head_type="coarse")
+    coarse.load_state_dict(legacy.state_dict(), strict=True)
+    model = SAMiT(**kwargs, ssl_head_type="multiscale")
+    image = torch.rand(1, 1, 128, 128)
+    mask = torch.from_numpy(BlockwiseMaskGenerator()(128))[None]
+    masked = mask_ssl_image(image, mask)
+    target = compute_hog_target(image)
+    with torch.no_grad():
+        assert coarse(masked, mode="ssl").shape == (1, 27, 4, 4)
+    pred = model(masked, mode="ssl")
+    assert pred.shape == target.shape == (1, 27, 8, 8)
+
+    HOGReconstructionLoss()(pred, target, mask).backward()
+
+    for branch in (model.ssl_head.local_proj, model.ssl_head.context_proj):
+        assert branch.weight.grad is not None
+        assert torch.count_nonzero(branch.weight.grad) > 0

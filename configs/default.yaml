@@ -42,6 +42,7 @@ stages:
 
   # ----------------- ЭТАП 1 — SSL (HOG-MIM) -----------------
   ssl:
+    head_type: coarse           # multiscale uses the stride-16 HOG grid
     train_index: /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/ssl_train.tsv
     batch_size: 64
     grad_accum: 2                 # effective batch = 64 * 2 GPUs * 2 = 256

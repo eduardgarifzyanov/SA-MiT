@@ -74,6 +74,7 @@ def load_model(cfg, device):
         in_channels=cfg["common"]["in_channels"],
         num_classes=cfg["common"]["num_classes"],
         hog_dim=cfg["common"]["hog_dim"],
+        ssl_head_type=cfg["stages"]["ssl"].get("head_type", "coarse"),
     )
 
     return model.to(device)

@@ -87,3 +87,28 @@ class HOGReconstructionHead(nn.Module):
 
     def forward(self, feature_map: torch.Tensor) -> torch.Tensor:
         return self.proj(feature_map)
+
+class MultiscaleHOGReconstructionHead(nn.Module):
+    """Predict HOG on the stride-16 grid using stage-3 and stage-4 features."""
+
+    def __init__(self, stage3_channels: int, stage4_channels: int, hog_dim: int):
+        super().__init__()
+        lateral_channels = 96
+        self.local_proj = nn.Conv2d(stage3_channels, lateral_channels, kernel_size=1)
+        self.context_proj = nn.Conv2d(stage4_channels, lateral_channels, kernel_size=1)
+        self.fuse = nn.Sequential(
+            nn.Conv2d(2 * lateral_channels, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.GELU(),
+            nn.Conv2d(128, hog_dim, kernel_size=1),
+        )
+
+    def forward(self, stage3: torch.Tensor, stage4: torch.Tensor) -> torch.Tensor:
+        local = self.local_proj(stage3)
+        context = F.interpolate(
+            self.context_proj(stage4),
+            size=local.shape[-2:],
+            mode="bilinear",
+            align_corners=False,
+        )
+        return self.fuse(torch.cat((local, context), dim=1))

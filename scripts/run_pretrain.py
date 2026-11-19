@@ -56,6 +56,11 @@ def main():
         cfg = yaml.safe_load(f)
     ssl_cfg = cfg["stages"]["ssl"]
     common = cfg["common"]
+    ssl_head_type = ssl_cfg.get("head_type", "coarse")
+    if ssl_head_type == "multiscale" and (
+        common.get("hog_cell_size", 16) != 16 or ssl_cfg["block_size"] != 16
+    ):
+        raise ValueError("The multiscale SSL head requires 16-pixel HOG and mask cells")
     if common.get("prepared_dataset", False):
         validate_prepared_indices(common["data_root"], [ssl_cfg["train_index"]])
 
@@ -149,6 +154,7 @@ def main():
         in_channels=common["in_channels"],
         num_classes=common["num_classes"],
         hog_dim=common["hog_dim"],
+        ssl_head_type=ssl_head_type,
     )
 
     model = model.to(device)
