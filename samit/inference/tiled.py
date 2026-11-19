@@ -20,7 +20,12 @@ class TiledInference:
     """
 
     def __init__(
-        self, predictor, tile_size=512, stride=384, num_classes=7, use_hann=True,
+        self,
+        predictor,
+        tile_size=512,
+        stride=384,
+        num_classes=7,
+        use_hann=True,
         accumulation_device="cpu",
     ):
         if not 0 < stride <= tile_size or num_classes < 1:

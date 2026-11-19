@@ -90,6 +90,7 @@ class HOGReconstructionHead(nn.Module):
     def forward(self, feature_map: torch.Tensor) -> torch.Tensor:
         return self.proj(feature_map)
 
+
 class MultiscaleHOGReconstructionHead(nn.Module):
     """Predict HOG on the stride-16 grid using stage-3 and stage-4 features."""
 
