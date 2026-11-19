@@ -30,6 +30,7 @@ class SegmentationHead(nn.Module):
         in_channels=(64, 128, 320, 512),
         mid_channels: int = 256,
         num_classes: int = 7,
+        dropout: float = 0.0,
     ) -> None:
         super().__init__()
         self.lateral = nn.ModuleList(
@@ -40,6 +41,7 @@ class SegmentationHead(nn.Module):
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
         )
+        self.dropout = nn.Dropout2d(p=dropout)
         self.classifier = nn.Conv2d(mid_channels, num_classes, kernel_size=1)
 
     def forward(self, features, output_size):
@@ -58,7 +60,7 @@ class SegmentationHead(nn.Module):
             outs.append(y)
         x = torch.cat(outs, dim=1)
         x = self.fuse(x)
-        x = self.classifier(x)
+        x = self.classifier(self.dropout(x))
         x = F.interpolate(
             x,
             size=output_size,

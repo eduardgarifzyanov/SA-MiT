@@ -55,6 +55,7 @@ def main():
         in_channels=common["in_channels"],
         num_classes=common["num_classes"],
         hog_dim=common["hog_dim"],
+        seg_dropout=seg.get("dropout", 0.0),
     )
     load_encoder_weights(model, args.pretrained, "cpu")
     model = model.to(args.device).train()

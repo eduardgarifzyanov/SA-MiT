@@ -60,6 +60,7 @@ stages:
 
   # ----------------- ЭТАП 2 — Сегментация -----------------
   seg:
+    dropout: 0.0                 # spatial dropout before the classifier
     train_index: /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/seg_train.tsv
     val_index:   /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/seg_val.tsv
     test_index:  /hdd_pool/egarifyzanov/datasets/sa_mit_v2/indices/seg_test.tsv

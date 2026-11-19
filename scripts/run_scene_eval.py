@@ -109,7 +109,8 @@ def main():
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     common = cfg["common"]
     root = Path(common["data_root"])
-    index_path = Path(cfg["stages"]["seg"][f"{args.split}_index"])
+    seg_cfg = cfg["stages"]["seg"]
+    index_path = Path(seg_cfg[f"{args.split}_index"])
     ready = validate_prepared_indices(root, [index_path])
     sources, tiles, tile_size = load_inventory(root, args.split, index_path)
     if tile_size != common["image_size"]:
@@ -119,6 +120,7 @@ def main():
         in_channels=common["in_channels"],
         num_classes=num_classes,
         hog_dim=common["hog_dim"],
+        seg_dropout=seg_cfg.get("dropout", 0.0),
     )
     epoch = Checkpointer(str(args.output.parent)).load(args.checkpoint, model)
     predictor = Predictor(

@@ -39,6 +39,7 @@ class SAMiT(nn.Module):
         depths=(3, 3, 6, 3),
         sr_ratios=(8, 4, 2, 1),
         ssl_head_type: str = "coarse",
+        seg_dropout: float = 0.0,
     ) -> None:
         super().__init__()
         self.encoder = SAMiTEncoder(
@@ -51,6 +52,7 @@ class SAMiT(nn.Module):
         self.seg_head = SegmentationHead(
             in_channels=embed_dims,
             num_classes=num_classes,
+            dropout=seg_dropout,
         )
         self.ssl_head_type = ssl_head_type
         self.ssl_head: nn.Module

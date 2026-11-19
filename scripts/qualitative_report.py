@@ -319,6 +319,7 @@ def main():
         in_channels=common["in_channels"],
         num_classes=num_classes,
         hog_dim=common["hog_dim"],
+        seg_dropout=seg_cfg.get("dropout", 0.0),
     )
     Checkpointer(directory=seg_cfg["checkpoint_dir"]).load(
         path=args.checkpoint,
