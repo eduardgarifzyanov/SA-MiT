@@ -325,6 +325,7 @@ class TwoStageTrainer:
 
                 if val_stats:
                     msg += f"  val_mIoU=" f"{val_stats.get('mean_iou', 0):.4f}"
+                    msg += f"  val_loss={val_stats['val_loss']:.4f}"
 
                 if self.progress_logger is not None:
                     self.progress_logger.info(msg)
